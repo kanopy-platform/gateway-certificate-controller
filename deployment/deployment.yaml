@@ -1,0 +1,102 @@
+---
+apiVersion: cert-manager.io/v1alpha2
+kind: Issuer
+metadata:
+  name: cert-gateway-controller-selfsigned
+  namespace: devops
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1alpha2
+kind: Certificate
+metadata:
+  name: cert-gateway-controller-cert
+  namespace: devops
+spec:
+  secretName: cert-gateway-controller-cert
+  dnsNames:
+    - cert-gateway-controller.devops.svc
+    - cert-gateway-controller.devops.svc.cluster.local
+  issuerRef:
+    name: cert-gateway-controller-selfsigned
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: devops
+  name: cert-gateway-controller
+  labels:
+    app: cert-gateway-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cert-gateway-controller
+  template:
+    metadata:
+      labels:
+        app: cert-gateway-controller
+    spec:
+      containers:
+        - name: cert-gateway-controller
+          image: registry.example.com/cert-gateway-controller:latest
+          imagePullPolicy: Always
+          args:
+            - run
+          
+          volumeMounts:
+            - name: webhook-certs
+              mountPath: /etc/webhook/certs
+              readOnly: true
+      serviceAccountName: cert-gateway-controller
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: cert-gateway-controller-cert
+
+---   
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: devops
+  name: cert-gateway-controller
+  labels:
+    app: cert-gateway-controller
+spec:
+  ports:
+  - port: 8443
+    targetPort: 8443
+  selector:
+    app: cert-gateway-controller
+---
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: MutatingWebhookConfiguration
+metadata:
+  creationTimestamp: null
+  name: cert-gateway-controller
+  annotations:
+    cert-manager.io/inject-ca-from: devops/cert-gateway-controller-cert
+webhooks:
+- clientConfig:
+    caBundle: Cg==
+    service:
+      name: cert-gateway-controller  
+      path: /mutate
+      port: 8443
+      namespace: "devops"
+  sideEffects: None
+  admissionReviewVersions: ["v1beta1"]
+  failurePolicy: Fail
+  name: kanopy.isto.gateway.io
+  rules:
+  - apiGroups:
+    - networking.istio.io
+    apiVersions:
+    - "*"
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - gateways
+    scope: "Namespaced"

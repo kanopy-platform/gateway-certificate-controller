@@ -1,0 +1,40 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: service-mesh-istio
+  namespace: devops
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: service-mesh-istio
+subjects:
+- kind: ServiceAccount
+  name: cert-gateway-controller
+  namespace: devops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cert-gateway-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cert-manager-edit
+subjects:
+- kind: ServiceAccount
+  name: cert-gateway-controller
+  namespace: devops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cert-gateway-controller-view
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cert-manager-view
+subjects:
+- kind: ServiceAccount
+  name: cert-gateway-controller
+  namespace: devops
