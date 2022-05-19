@@ -4,6 +4,9 @@ import (
 	"net/http"
 	"strings"
 
+	"k8s.io/cli-runtime/pkg/genericclioptions"
+	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
+
 	"github.com/kanopy-platform/gateway-certificate-controller/internal/server"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -16,13 +19,18 @@ func NewRootCommand() *cobra.Command {
 	root := &RootCommand{}
 
 	cmd := &cobra.Command{
-		Use:               "kanopy-app-go",
+		Use:               "kanopy-gateway-cert-controller",
 		PersistentPreRunE: root.persistentPreRunE,
 		RunE:              root.runE,
 	}
 
 	cmd.PersistentFlags().String("log-level", "info", "Configure log level")
 	cmd.PersistentFlags().String("listen-address", ":8080", "Server listen address")
+
+	k8sFlags := genericclioptions.NewConfigFlags(true)
+	k8sFlags.AddFlags(cmd.PersistentFlags())
+	// no need to check err, this only checks if variadic args != 0
+	_ = viper.BindEnv("kubeconfig", "KUBECONFIG")
 
 	cmd.AddCommand(newVersionCommand())
 	return cmd
