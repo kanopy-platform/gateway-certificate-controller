@@ -55,6 +55,7 @@ func (r *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 	log := log.FromContext(ctx)
 
 	log.Info("Reconciling Gateway...")
+	// TODO not implemented
 
 	return reconcile.Result{}, nil
 }
