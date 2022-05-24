@@ -1,5 +1,5 @@
-FROM golang:1.16 as build
-ARG VERSION= "0.0.0"
+FROM golang:1.17 as build
+ARG VERSION="0.0.0"
 ARG GIT_COMMIT
 WORKDIR /go/src/app
 COPY go.mod go.sum ./

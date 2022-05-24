@@ -1,0 +1,127 @@
+---
+apiVersion: cert-manager.io/v1alpha2
+kind: Issuer
+metadata:
+  name: kanopy-gateway-cert-controller-selfsigned
+  namespace: devops
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1alpha2
+kind: Certificate
+metadata:
+  name: kanopy-gateway-cert-controller
+  namespace: devops
+spec:
+  secretName: kanopy-gateway-cert-controller
+  dnsNames:
+    - kanopy-gateway-cert-controller.devops.svc
+    - kanopy-gateway-cert-controller.devops.svc.cluster.local
+  issuerRef:
+    name: cert-gateway-controller-selfsigned
+  
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: devops
+  name: kanopy-gateway-cert-controller
+  labels:
+    app: kanopy-gateway-cert-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kanopy-gateway-cert-controller
+  template:
+    metadata:
+      labels:
+        app: kanopy-gateway-cert-controller
+    spec:
+      containers:
+        - name: kanopy-gateway-cert-controller
+          image: registry.example.com/kanopy-gateway-cert-controller:latest
+          imagePullPolicy: Always
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          ports:
+            - containerPort: 80
+              name: metrics
+            - containerPort: 8443
+              name: webhooks
+            - containerPort: 8080
+              name: probes
+      serviceAccountName: kanopy-gateway-cert-controller
+
+---   
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: devops
+  name: kanopy-gateway-cert-controller
+  labels:
+    app: kanopy-gateway-cert-controller
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+    name: metrics   
+  - port: 8443
+    targetPort: 8443
+    name: webhooks
+  selector:
+    app: kanopy-gateway-cert-controller
+
+---   
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: devops
+  name: kanopy-gateway-cert-controller
+  labels:
+    app: kanopy-gateway-cert-controller
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  creationTimestamp: null
+  name: kanopy-gateway-cert-controller
+  annotations:
+    cert-manager.io/inject-ca-from: devops/kanopy-gateway-cert-controller
+webhooks:
+- clientConfig:
+    caBundle: Cg==
+    service:
+      name: kanopy-gateway-cert-controller
+      path: /mutate
+      port: 8443
+      namespace: "devops"
+  sideEffects: None
+  admissionReviewVersions: ["v1beta1"]
+  failurePolicy: Ignore
+  name: v1beta1.kanopy-platform.github.io
+  objectSelector:
+    matchLabels:
+      "v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"
+  rules:
+  - apiGroups:
+    - networking.istio.io
+    apiVersions:
+    - "*"
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - gateways
+    scope: "Namespaced"

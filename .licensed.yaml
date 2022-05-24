@@ -21,3 +21,4 @@ reviewed:
     - google.golang.org/**/*  # bsd-style
     - sigs.k8s.io/**/* # apache-2.0
     - k8s.io/**/* # apache-2.0
+    - github.com/google/go-cmp/**/* #bsd-3-clause

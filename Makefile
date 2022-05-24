@@ -5,10 +5,18 @@ GIT_COMMIT := $(shell git rev-parse HEAD)
 
 RUN ?= .*
 PKG ?= ./...
+
 .PHONY: test
 test: ## Run tests in local environment
 	golangci-lint run --timeout=5m $(PKG)
 	go test -cover -run=$(RUN) $(PKG)
+
+
+.PHONY: dev
+dev:
+	mkdir -p bin
+	go build -o bin/${CMD_NAME} 
+
 
 .PHONY: docker-build-test
 docker-build-test: ## Build local development docker image with cached go modules, builds, and tests
