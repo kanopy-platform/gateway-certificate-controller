@@ -3,7 +3,6 @@ apiVersion: cert-manager.io/v1alpha2
 kind: Issuer
 metadata:
   name: kanopy-gateway-cert-controller-selfsigned
-  namespace: devops
 spec:
   selfSigned: {}
 ---
@@ -11,7 +10,6 @@ apiVersion: cert-manager.io/v1alpha2
 kind: Certificate
 metadata:
   name: kanopy-gateway-cert-controller
-  namespace: devops
 spec:
   secretName: kanopy-gateway-cert-controller
   dnsNames:
@@ -24,7 +22,6 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: devops
   name: kanopy-gateway-cert-controller
   labels:
     app: kanopy-gateway-cert-controller
@@ -67,7 +64,6 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  namespace: devops
   name: kanopy-gateway-cert-controller
   labels:
     app: kanopy-gateway-cert-controller
@@ -86,7 +82,6 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  namespace: devops
   name: kanopy-gateway-cert-controller
   labels:
     app: kanopy-gateway-cert-controller

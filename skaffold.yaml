@@ -12,5 +12,6 @@ build:
 deploy:
   kubeContext: minikube
   kubectl:
+    defaultNamespace: devops
     manifests:
       - examples/k8s/*.yaml

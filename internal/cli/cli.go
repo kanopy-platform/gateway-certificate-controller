@@ -18,7 +18,6 @@ import (
 	"istio.io/pkg/log"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	klog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -101,7 +100,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 
 	ctx := signals.SetupSignalHandler()
 
-	mgr, err := manager.New(config.GetConfigOrDie(), manager.Options{
+	mgr, err := manager.New(cfg, manager.Options{
 		Scheme:                 scheme,
 		Host:                   "0.0.0.0",
 		Port:                   viper.GetInt("webhook-listen-port"),
