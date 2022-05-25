@@ -30,7 +30,6 @@ var scheme = runtime.NewScheme()
 func init() {
 	utilruntime.Must(networkingv1beta1.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(certmanagerv1.SchemeBuilder.AddToScheme(scheme))
-
 }
 
 type RootCommand struct {
@@ -109,7 +108,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		HealthProbeBindAddress: ":8080",
 		LeaderElection:         true,
 		LeaderElectionID:       "kanopy-gateway-cert-controller",
-		DryRunClient:           viper.GetBool("dry-run"),
+		DryRunClient:           dryRun,
 	})
 
 	if err != nil {

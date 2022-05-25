@@ -15,7 +15,7 @@ func newVersionCommand() *cobra.Command {
 	cmd := versionCommand{Command: &cobra.Command{}}
 
 	cmd.Use = "version"
-	cmd.Short = "Build information for kanopy-app-go"
+	cmd.Short = "Build information for kanopy-gateway-cert-controller"
 
 	cmd.RunE = func(command *cobra.Command, args []string) error {
 		fmt.Printf("%#v\n", version.Get())
