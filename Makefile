@@ -7,16 +7,19 @@ RUN ?= .*
 PKG ?= ./...
 
 .PHONY: test
-test: ## Run tests in local environment
+test: tidy ## Run tests in local environment
 	golangci-lint run --timeout=5m $(PKG)
 	go test -cover -run=$(RUN) $(PKG)
 
 
 .PHONY: dev
-dev:
+dev: tidy
 	mkdir -p bin
 	go build -o bin/${CMD_NAME} 
 
+.PHONY:
+tidy:
+	go mod tidy -go=1.16 && go mod tidy -go=1.17
 
 .PHONY: docker-build-test
 docker-build-test: ## Build local development docker image with cached go modules, builds, and tests
