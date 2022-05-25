@@ -1,0 +1,80 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: service-mesh-istio
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: service-mesh-istio
+subjects:
+- kind: ServiceAccount
+  name: kanopy-gateway-cert-controller
+  namespace: devops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kanopy-gateway-cert-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cert-manager-edit
+subjects:
+- kind: ServiceAccount
+  name: kanopy-gateway-cert-controller
+  namespace: devops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kanopy-gateway-cert-controller-view
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cert-manager-view
+subjects:
+- kind: ServiceAccount
+  name: kanopy-gateway-cert-controller
+  namespace: devops
+
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: leases-admin
+rules:
+  - apiGroups:
+    - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - get
+      - list
+      - update
+      
+  - apiGroups:
+     - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - get
+      - list
+      - update
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kanopy-gateway-cert-controller-leases
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: leases-admin
+subjects:
+- kind: ServiceAccount
+  name: kanopy-gateway-cert-controller
+  namespace: devops

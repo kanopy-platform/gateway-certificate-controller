@@ -1,0 +1,17 @@
+---
+apiVersion: skaffold/v2beta26
+kind: Config
+build:
+  insecureRegistries:
+    - registry.example.com
+  local:
+    push: true
+  artifacts:
+    - image: registry.example.com/kanopy-gateway-cert-controller
+      ko: {}
+deploy:
+  kubeContext: minikube
+  kubectl:
+    defaultNamespace: devops
+    manifests:
+      - examples/k8s/*.yaml

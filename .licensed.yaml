@@ -1,0 +1,24 @@
+---
+sources:
+  go: true
+allowed:
+  - mit
+  - apache-2.0
+  - mpl-2.0
+  - bsd-2-clause
+  - bsd-3-clause
+  - isc
+reviewed:
+  go:
+    - gopkg.in/inf.v0 # apache-2.0
+    - github.com/pmezard/go-difflib/difflib # apache-2.0
+    - github.com/munnerz/goautoneg # bsd-3-clause
+    - github.com/gogo/protobuf/**/*  # apache-2.0
+    - github.com/magiconair/properties # bsd-2-clause
+    - gopkg.in/ini.v1 # apache-2.0
+    - gopkg.in/yaml.v2 # apache-2.0
+    - golang.org/x/**/* # bsd-style
+    - google.golang.org/**/*  # bsd-style
+    - sigs.k8s.io/**/* # apache-2.0
+    - k8s.io/**/* # apache-2.0
+    - github.com/google/go-cmp/**/* #bsd-3-clause

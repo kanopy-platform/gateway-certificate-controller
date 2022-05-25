@@ -1,0 +1,9 @@
+Dockerfile
+.git
+.licensed.yaml
+Makefile
+README.md
+skaffold.yaml
+.drone.yaml
+.gitignore
+examples/
