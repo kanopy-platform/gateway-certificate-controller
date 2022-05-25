@@ -20,7 +20,6 @@ steps:
       - name: cache
         path: /go
     commands:
-      - apk add make
       - make test
 
   - name: license-check
