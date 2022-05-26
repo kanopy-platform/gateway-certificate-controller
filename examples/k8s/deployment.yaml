@@ -16,7 +16,7 @@ spec:
     - kanopy-gateway-cert-controller.devops.svc
     - kanopy-gateway-cert-controller.devops.svc.cluster.local
   issuerRef:
-    name: cert-gateway-controller-selfsigned
+    name: kanopy-gateway-cert-controller-selfsigned
   
 ---
 apiVersion: apps/v1

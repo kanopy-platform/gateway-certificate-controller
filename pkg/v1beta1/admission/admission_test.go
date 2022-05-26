@@ -1,6 +1,7 @@
 package admission
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -8,24 +9,33 @@ import (
 	"github.com/stretchr/testify/assert"
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
 	"istio.io/client-go/pkg/apis/networking/v1beta1"
+	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
+	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-// func TestGatewayMutationHookHandle(t *testing.T) {
-// 	t.Parallel()
+func TestGatewayMutationHook(t *testing.T) {
+	t.Parallel()
 
-// 	g := NewGatewayMutationHook(istiofake.NewSimpleClientset())
+	g := NewGatewayMutationHook(istiofake.NewSimpleClientset())
 
-// 	response := g.Handle(context.TODO(), admission.Request{
-// 		AdmissionRequest: v1.AdmissionRequest{
-// 			Name:      "gateway-test",
-// 			Namespace: "devops",
-// 			Operation: v1.Create,
-// 		},
-// 	})
-// 	assert.True(t, response.Allowed)
-// 	fmt.Println(response.Result)
-// }
+	scheme := runtime.NewScheme()
+	utilruntime.Must(v1beta1.SchemeBuilder.AddToScheme(scheme))
+
+	decoder, err := admission.NewDecoder(scheme)
+	assert.NoError(t, err)
+	assert.NoError(t, g.InjectDecoder(decoder))
+
+	response := g.Handle(context.TODO(), admission.Request{
+		AdmissionRequest: admissionv1.AdmissionRequest{},
+	})
+
+	// Empty AdmissionRequest will be rejected
+	assert.False(t, response.Allowed)
+}
 
 func TestCredentialName(t *testing.T) {
 	t.Parallel()
@@ -51,32 +61,6 @@ func TestCredentialName(t *testing.T) {
 		n := credentialName(test.namespace, test.name)
 		assert.Contains(t, n, fmt.Sprintf("%s-%s-", test.namespace, test.name), test.description)
 		assert.True(t, len(n) <= secretNameMaxLength, test.description)
-	}
-}
-
-func TestShouldMutate(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		gateway v1beta1.Gateway
-		want    bool
-	}{
-		{
-			gateway: v1beta1.Gateway{ObjectMeta: v1.ObjectMeta{
-				Labels: map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"},
-			}},
-			want: true,
-		},
-		{
-			gateway: v1beta1.Gateway{ObjectMeta: v1.ObjectMeta{
-				Labels: map[string]string{"v1beta1.kanopy-platform.github.io/some-other-label": "true"},
-			}},
-			want: false,
-		},
-	}
-
-	for _, test := range tests {
-		assert.Equal(t, test.want, shouldMutate(test.gateway))
 	}
 }
 
