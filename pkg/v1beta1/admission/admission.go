@@ -91,13 +91,13 @@ func mutate(gateway *v1beta1.Gateway) {
 
 		if s.Tls.Mode == networkingv1beta1.ServerTLSSettings_SIMPLE {
 			newCredentialName := credentialName(gateway.Namespace, gateway.Name)
-			s.Tls.CredentialName = newCredentialName
-
 			log.WithFields(log.Fields{
 				"gateway":                 gateway.Name,
 				"original_CredentialName": s.Tls.CredentialName,
 				"new_CredentialName":      newCredentialName,
-			}).Info("mutated CredentialName")
+			}).Info("mutating CredentialName")
+
+			s.Tls.CredentialName = newCredentialName
 		}
 	}
 }
