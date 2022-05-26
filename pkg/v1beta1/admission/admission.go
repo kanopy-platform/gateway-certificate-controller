@@ -95,7 +95,7 @@ func mutate(gateway *v1beta1.Gateway) {
 				"gateway":                 gateway.Name,
 				"original_CredentialName": s.Tls.CredentialName,
 				"new_CredentialName":      newCredentialName,
-			}).Info("mutating CredentialName")
+			}).Info("mutating gateway")
 
 			s.Tls.CredentialName = newCredentialName
 		}
