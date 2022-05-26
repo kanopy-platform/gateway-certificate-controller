@@ -8,6 +8,7 @@ import (
 
 	v1beta1controllers "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1"
 	logzap "github.com/kanopy-platform/gateway-certificate-controller/internal/log/zap"
+	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/admission"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -124,7 +125,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// TODO add mutate handler
+	admission.NewGatewayMutationHook(ic).SetupWithManager(mgr)
 
 	return mgr.Start(ctx)
 }

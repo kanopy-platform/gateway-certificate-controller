@@ -9,8 +9,12 @@ import (
 
 type Label string
 
-const InjectSimpleCredentialNameLabel Label = "istio-cert-controller-inject-simple-credential-name"
+const InjectSimpleCredentialName Label = "istio-cert-controller-inject-simple-credential-name"
+
+func InjectSimpleCredentialNameLabel() string {
+	return fmt.Sprintf("%s/%s", version.String(), string(InjectSimpleCredentialName))
+}
 
 func InjectSimpleCredentialNameLabelSelector() string {
-	return apilabels.Set(map[string]string{fmt.Sprintf("%s/%s", version.String(), string(InjectSimpleCredentialNameLabel)): "true"}).AsSelector().String()
+	return apilabels.Set(map[string]string{fmt.Sprintf("%s/%s", version.String(), string(InjectSimpleCredentialName)): "true"}).AsSelector().String()
 }
