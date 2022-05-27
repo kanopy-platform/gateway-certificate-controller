@@ -3,7 +3,6 @@ package admission
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -83,11 +82,6 @@ func credentialName(namespace, name string, log logr.Logger) string {
 }
 
 func mutate(gateway *v1beta1.Gateway, log logr.Logger) {
-	if gateway == nil {
-		log.Error(errors.New("nil pointer"), "mutate(): gateway nil pointer")
-		return
-	}
-
 	for _, s := range gateway.Spec.Servers {
 		if s.Tls == nil {
 			continue
