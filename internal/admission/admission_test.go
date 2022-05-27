@@ -2,10 +2,8 @@ package admission
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
-	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/random"
 	"github.com/stretchr/testify/assert"
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
 	"istio.io/client-go/pkg/apis/networking/v1beta1"
@@ -14,6 +12,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -41,26 +40,35 @@ func TestCredentialName(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		description string
-		namespace   string
-		name        string
+		description  string
+		namespace    string
+		name         string
+		wantContains string
+		wantLen      int
 	}{
 		{
-			description: "namespace-name-random within character limit",
-			namespace:   "devops",
-			name:        "example-gateway",
+			description:  "generated credentialName within character limit",
+			namespace:    "devops",
+			name:         "example-gateway",
+			wantContains: "devops-example-gateway-",
+			wantLen:      33,
 		},
 		{
-			description: "random suffix is truncated",
-			namespace:   random.SecureString(125),
-			name:        random.SecureString(125),
+			description: "generated credentialName is truncated",
+			namespace:   "long-namespace-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			name:        "long-name-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			// some characters from the end of name are truncated
+			wantContains: "long-namespace-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-long-name-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb-",
+			wantLen:      253,
 		},
 	}
 
 	for _, test := range tests {
-		n := credentialName(test.namespace, test.name)
-		assert.Contains(t, n, fmt.Sprintf("%s-%s-", test.namespace, test.name), test.description)
-		assert.True(t, len(n) <= secretNameMaxLength, test.description)
+		log := log.FromContext(context.TODO())
+		n := credentialName(test.namespace, test.name, log)
+
+		assert.Contains(t, n, test.wantContains, test.description)
+		assert.Equal(t, test.wantLen, len(n), test.description)
 	}
 }
 
@@ -94,8 +102,9 @@ func TestMutate(t *testing.T) {
 		},
 	}
 
+	log := log.FromContext(context.TODO())
 	mutatedGateway := gateway.DeepCopy()
-	mutate(mutatedGateway)
+	mutate(mutatedGateway, log)
 
 	assert.Equal(t, gateway.Spec.Servers[0], mutatedGateway.Spec.Servers[0])
 	assert.Equal(t, gateway.Spec.Servers[1], mutatedGateway.Spec.Servers[1])

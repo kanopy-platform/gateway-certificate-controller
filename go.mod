@@ -4,6 +4,7 @@ go 1.17
 
 require (
 	github.com/cert-manager/cert-manager v1.8.0
+	github.com/go-logr/logr v1.2.3
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/viper v1.10.0
@@ -12,13 +13,12 @@ require (
 	istio.io/api v0.0.0-20220512212136-561ffec82582
 	istio.io/client-go v1.13.4
 	istio.io/pkg v0.0.0-20220523183728-f3d886a02c24
+	k8s.io/api v0.24.0
 	k8s.io/apimachinery v0.24.0
 	k8s.io/cli-runtime v0.24.0
 	k8s.io/client-go v0.24.0
 	sigs.k8s.io/controller-runtime v0.12.1
 )
-
-require k8s.io/api v0.24.0
 
 require (
 	cloud.google.com/go v0.100.2 // indirect
@@ -33,7 +33,6 @@ require (
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/go-errors/errors v1.0.1 // indirect
-	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/zapr v1.2.0 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/jsonreference v0.19.5 // indirect

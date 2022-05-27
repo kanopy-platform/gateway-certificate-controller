@@ -6,9 +6,9 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 
+	"github.com/kanopy-platform/gateway-certificate-controller/internal/admission"
 	v1beta1controllers "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1"
 	logzap "github.com/kanopy-platform/gateway-certificate-controller/internal/log/zap"
-	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/admission"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
