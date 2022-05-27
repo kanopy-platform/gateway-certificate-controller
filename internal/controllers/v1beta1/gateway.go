@@ -10,6 +10,7 @@ import (
 	istioinformers "istio.io/client-go/pkg/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -18,13 +19,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
+type eventReconciler interface {
+	Cleanup(ctx context.Context, request reconcile.Request) error
+}
+
+type eventHandler struct{}
+
 type GatewayController struct {
 	istioClient istioversionedclient.Interface
 	name        string
+	events      eventReconciler
 }
 
 func NewGatewayController(client istioversionedclient.Interface) *GatewayController {
-	gr := &GatewayController{name: "istio-gateway-controller", istioClient: client}
+	gr := &GatewayController{name: "istio-gateway-controller", istioClient: client, events: &eventHandler{}}
 	return gr
 }
 
@@ -50,12 +58,35 @@ func (c *GatewayController) SetupWithManager(ctx context.Context, mgr manager.Ma
 	return nil
 }
 
-func (r *GatewayController) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	// set up a convenient log object so we don't have to type request over and over again
 	log := log.FromContext(ctx)
+	log.Info("Reconciling Gateway...", "reconcile ", request.String())
+	gateway, err := c.istioClient.NetworkingV1beta1().Gateways(request.Namespace).Get(ctx, request.Name, metav1.GetOptions{})
 
-	log.Info("Reconciling Gateway...")
-	// TODO not implemented
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// check and delete cert
+			log.Info("Cleaned up certificates")
+			if err := c.events.Cleanup(ctx, request); err != nil {
+				return reconcile.Result{Requeue: true}, err
+			}
+			return reconcile.Result{}, nil
+		}
+
+		log.Error(err, "Error reconciling gateway, requeued")
+		return reconcile.Result{
+			Requeue: true,
+		}, err
+	}
+
+	for _, s := range gateway.Spec.Servers {
+		log.V(4).Info("Inspecting", "server", s.Hosts)
+	}
 
 	return reconcile.Result{}, nil
+}
+
+func (e *eventHandler) Cleanup(ctx context.Context, request reconcile.Request) error {
+	return nil
 }
