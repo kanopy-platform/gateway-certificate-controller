@@ -2,6 +2,8 @@ package admission
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -55,11 +57,11 @@ func TestCredentialName(t *testing.T) {
 		},
 		{
 			description: "generated credentialName is truncated",
-			namespace:   "long-namespace-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			name:        "long-name-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-			// some characters from the end of name are truncated
-			wantContains: "long-namespace-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-long-name-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb-",
-			wantLen:      253,
+			namespace:   strings.Repeat("a", 125),
+			name:        strings.Repeat("b", 125),
+			// some characters from the end of name should be truncated
+			wantContains: fmt.Sprintf("%s-%s-", strings.Repeat("a", 125), strings.Repeat("b", 116)),
+			wantLen:      secretNameMaxLength,
 		},
 	}
 
