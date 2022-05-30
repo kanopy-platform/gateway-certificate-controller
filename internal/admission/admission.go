@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/go-logr/logr"
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
 	"istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
@@ -47,7 +46,7 @@ func (g *GatewayMutationHook) Handle(ctx context.Context, req admission.Request)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	mutate(gateway, log)
+	gateway = mutate(ctx, gateway)
 
 	jsonGateway, err := json.Marshal(gateway)
 	if err != nil {
@@ -63,35 +62,38 @@ func (g *GatewayMutationHook) InjectDecoder(d *admission.Decoder) error {
 	return nil
 }
 
-func credentialName(namespace, name string, log logr.Logger) string {
+func credentialName(ctx context.Context, namespace, name string) string {
+	log := log.FromContext(ctx)
+
 	prefix := fmt.Sprintf("%s-%s", namespace, name)
 	randomStr := rand.String(credentialNameRandomStrLen)
 
-	// Leave enough space for "-<random string>"
+	// Leave enough space for a dash and the random string
 	maxPrefixLen := secretNameMaxLength - credentialNameRandomStrLen - 1
 
-	credentialName := fmt.Sprintf("%s-%s", prefix, randomStr)
-
 	if len(prefix) > maxPrefixLen {
-		original := credentialName
-		credentialName = fmt.Sprintf("%s-%s", prefix[:maxPrefixLen], randomStr)
-		log.Info(fmt.Sprintf("truncating gateway %s credentialName %s to %s", name, original, credentialName))
+		prefix = prefix[:maxPrefixLen]
+		log.Info(fmt.Sprintf("truncating gateway %s credentialName to %s", name, prefix))
 	}
 
-	return credentialName
+	return fmt.Sprintf("%s-%s", prefix, randomStr)
 }
 
-func mutate(gateway *v1beta1.Gateway, log logr.Logger) {
+func mutate(ctx context.Context, gateway *v1beta1.Gateway) *v1beta1.Gateway {
+	log := log.FromContext(ctx)
+
 	for _, s := range gateway.Spec.Servers {
 		if s.Tls == nil {
 			continue
 		}
 
 		if s.Tls.Mode == networkingv1beta1.ServerTLSSettings_SIMPLE {
-			newCredentialName := credentialName(gateway.Namespace, gateway.Name, log)
+			newCredentialName := credentialName(ctx, gateway.Namespace, gateway.Name)
 			log.Info(fmt.Sprintf("mutating gateway %s Tls.CredentialName, %s to %s", gateway.Name, s.Tls.CredentialName, newCredentialName))
 
 			s.Tls.CredentialName = newCredentialName
 		}
 	}
+
+	return gateway
 }

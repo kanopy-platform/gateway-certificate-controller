@@ -2,6 +2,7 @@ package admission
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -14,28 +15,66 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 func TestGatewayMutationHook(t *testing.T) {
 	t.Parallel()
 
-	g := NewGatewayMutationHook(istiofake.NewSimpleClientset())
+	gmh := NewGatewayMutationHook(istiofake.NewSimpleClientset())
 
 	scheme := runtime.NewScheme()
 	utilruntime.Must(v1beta1.SchemeBuilder.AddToScheme(scheme))
 
 	decoder, err := admission.NewDecoder(scheme)
 	assert.NoError(t, err)
-	assert.NoError(t, g.InjectDecoder(decoder))
+	assert.NoError(t, gmh.InjectDecoder(decoder))
 
-	response := g.Handle(context.TODO(), admission.Request{
-		AdmissionRequest: admissionv1.AdmissionRequest{},
-	})
+	gateway := &v1beta1.Gateway{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "test-gateway",
+			Namespace: "devops",
+		},
+		Spec: networkingv1beta1.Gateway{
+			Servers: []*networkingv1beta1.Server{
+				{
+					Tls: &networkingv1beta1.ServerTLSSettings{
+						Mode:           networkingv1beta1.ServerTLSSettings_SIMPLE,
+						CredentialName: "should-be-replaced",
+					},
+				},
+			},
+		},
+	}
 
-	// Empty AdmissionRequest will be rejected
-	assert.False(t, response.Allowed)
+	gatewayBytes, err := json.Marshal(gateway)
+	assert.NoError(t, err)
+
+	tests := []struct {
+		description string
+		request     admissionv1.AdmissionRequest
+		wantAllowed bool
+	}{
+		{
+			description: "Empty AdmissionRequest should be rejected",
+			request:     admissionv1.AdmissionRequest{},
+			wantAllowed: false,
+		},
+		{
+			description: "Successful AdmissionRequest with Gateway",
+			request: admissionv1.AdmissionRequest{
+				Object: runtime.RawExtension{
+					Raw: gatewayBytes,
+				},
+			},
+			wantAllowed: true,
+		},
+	}
+
+	for _, test := range tests {
+		response := gmh.Handle(context.TODO(), admission.Request{AdmissionRequest: test.request})
+		assert.Equal(t, test.wantAllowed, response.Allowed)
+	}
 }
 
 func TestCredentialName(t *testing.T) {
@@ -66,8 +105,7 @@ func TestCredentialName(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		log := log.FromContext(context.TODO())
-		n := credentialName(test.namespace, test.name, log)
+		n := credentialName(context.TODO(), test.namespace, test.name)
 
 		assert.Contains(t, n, test.wantContains, test.description)
 		assert.Equal(t, test.wantLen, len(n), test.description)
@@ -104,9 +142,7 @@ func TestMutate(t *testing.T) {
 		},
 	}
 
-	log := log.FromContext(context.TODO())
-	mutatedGateway := gateway.DeepCopy()
-	mutate(mutatedGateway, log)
+	mutatedGateway := mutate(context.TODO(), gateway.DeepCopy())
 
 	assert.Equal(t, gateway.Spec.Servers[0], mutatedGateway.Spec.Servers[0])
 	assert.Equal(t, gateway.Spec.Servers[1], mutatedGateway.Spec.Servers[1])
