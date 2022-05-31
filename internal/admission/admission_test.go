@@ -73,7 +73,7 @@ func TestGatewayMutationHook(t *testing.T) {
 
 	for _, test := range tests {
 		response := gmh.Handle(context.TODO(), admission.Request{AdmissionRequest: test.request})
-		assert.Equal(t, test.wantAllowed, response.Allowed)
+		assert.Equal(t, test.wantAllowed, response.Allowed, test.description)
 	}
 }
 
