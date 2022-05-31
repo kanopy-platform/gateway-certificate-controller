@@ -16,7 +16,7 @@ spec:
     - kanopy-gateway-cert-controller.devops.svc
     - kanopy-gateway-cert-controller.devops.svc.cluster.local
   issuerRef:
-    name: cert-gateway-controller-selfsigned
+    name: kanopy-gateway-cert-controller-selfsigned
   
 ---
 apiVersion: apps/v1
@@ -39,6 +39,10 @@ spec:
         - name: kanopy-gateway-cert-controller
           image: registry.example.com/kanopy-gateway-cert-controller:latest
           imagePullPolicy: Always
+          volumeMounts:
+            - name: webhook-certs
+              mountPath: /etc/webhook/certs
+              readOnly: true
           livenessProbe:
             httpGet:
               path: /healthz
@@ -59,6 +63,10 @@ spec:
             - containerPort: 8080
               name: probes
       serviceAccountName: kanopy-gateway-cert-controller
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: kanopy-gateway-cert-controller
 
 ---   
 apiVersion: v1
