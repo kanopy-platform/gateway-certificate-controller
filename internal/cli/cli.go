@@ -10,6 +10,7 @@ import (
 	v1beta1controllers "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1"
 	logzap "github.com/kanopy-platform/gateway-certificate-controller/internal/log/zap"
 
+	certmanagerversionedclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
@@ -98,6 +99,11 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	certmanagerClient, err := certmanagerversionedclient.NewForConfig(cfg)
+	if err != nil {
+		return err
+	}
+
 	ctx := signals.SetupSignalHandler()
 
 	mgr, err := manager.New(cfg, manager.Options{
@@ -122,6 +128,10 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := v1beta1controllers.NewGatewayController(ic).SetupWithManager(ctx, mgr); err != nil {
+		return err
+	}
+
+	if err := v1beta1controllers.NewGarbageCollectionController(certmanagerClient, ic).SetupWithManager(ctx, mgr); err != nil {
 		return err
 	}
 
