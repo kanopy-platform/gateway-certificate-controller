@@ -131,7 +131,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := v1beta1controllers.NewGarbageCollectionController(certmanagerClient, ic).SetupWithManager(ctx, mgr); err != nil {
+	if err := v1beta1controllers.NewGarbageCollectionController(certmanagerClient, ic).WithDryRun(dryRun).SetupWithManager(ctx, mgr); err != nil {
 		return err
 	}
 

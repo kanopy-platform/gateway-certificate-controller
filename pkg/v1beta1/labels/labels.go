@@ -32,7 +32,7 @@ func ManagedLabelSelector() string {
 	return apilabels.NewSelector().Add(*managedReq).String()
 }
 
-func ManagedLabelValues(in string) (gateway string, namespace string) {
+func ParseManagedLabel(in string) (gateway string, namespace string) {
 	s := strings.Split(in, ".")
 	if len(s) < 2 {
 		return "", ""

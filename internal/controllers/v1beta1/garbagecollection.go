@@ -26,6 +26,7 @@ type GarbageCollectionController struct {
 	name              string
 	certmanagerClient certmanagerversionedclient.Interface
 	istioClient       istioversionedclient.Interface
+	dryRun            bool
 }
 
 func NewGarbageCollectionController(certmanagerClient certmanagerversionedclient.Interface, istioClient istioversionedclient.Interface) *GarbageCollectionController {
@@ -37,6 +38,11 @@ func NewGarbageCollectionController(certmanagerClient certmanagerversionedclient
 	return gc
 }
 
+func (c *GarbageCollectionController) WithDryRun(dryRun bool) *GarbageCollectionController {
+	c.dryRun = dryRun
+	return c
+}
+
 func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr manager.Manager) error {
 	ctrl, err := controller.New(c.name, mgr, controller.Options{
 		Reconciler: c,
@@ -45,18 +51,16 @@ func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr 
 		return err
 	}
 
-	certmanagerInformerFactory := certmanagerinformers.NewSharedInformerFactoryWithOptions(c.certmanagerClient, time.Second*10, certmanagerinformers.WithTweakListOptions(func(listOptions *metav1.ListOptions) {
+	certmanagerInformerFactory := certmanagerinformers.NewSharedInformerFactoryWithOptions(c.certmanagerClient, time.Second*30, certmanagerinformers.WithTweakListOptions(func(listOptions *metav1.ListOptions) {
 		listOptions.LabelSelector = v1beta1labels.ManagedLabelSelector()
 	}))
 
 	if err := ctrl.Watch(&source.Informer{Informer: certmanagerInformerFactory.Certmanager().V1().Certificates().Informer()},
 		handler.Funcs{
-			// only queue on Update so that Delete does not trigger another Reconcile
-			// Add will trigger an Update
+			// only handle Update so that Deleting a certificate does not trigger another Reconcile
+			// Create will also trigger an Update
 			UpdateFunc: updateFunc,
 		}); err != nil {
-
-		//&handler.EnqueueRequestForObject{}); err != nil {
 		return err
 	}
 
@@ -69,8 +73,6 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 	// set up a convenient log object so we don't have to type request over and over again
 	log := log.FromContext(ctx)
 
-	log.Info("Reconciling Garbage Collection...")
-
 	certIface := c.certmanagerClient.CertmanagerV1().Certificates(request.Namespace)
 	cert, err := certIface.Get(ctx, request.Name, metav1.GetOptions{})
 	if err != nil {
@@ -79,12 +81,17 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 	}
 
 	label := cert.Labels[v1beta1labels.ManagedLabelString()]
-	gatewayName, gatewayNamespace := v1beta1labels.ManagedLabelValues(label)
+	gatewayName, gatewayNamespace := v1beta1labels.ParseManagedLabel(label)
 
 	_, err = c.istioClient.NetworkingV1beta1().Gateways(gatewayNamespace).Get(ctx, gatewayName, metav1.GetOptions{})
 	if k8serrors.IsNotFound(err) {
-		log.Info(fmt.Sprintf("Gateway not found, deleting Certificate %s", request))
-		if err := certIface.Delete(ctx, request.Name, metav1.DeleteOptions{}); err != nil { // TODO add dryRun to DeleteOptions
+		deleteOptions := metav1.DeleteOptions{}
+		if c.dryRun {
+			deleteOptions.DryRun = []string{"All"}
+		}
+
+		log.Info(fmt.Sprintf("Gateway not found, deleting Certificate %s", request), "dry-run", c.dryRun)
+		if err := certIface.Delete(ctx, request.Name, deleteOptions); err != nil {
 			log.Error(err, "failed to Delete Certificate")
 			return reconcile.Result{}, err
 		}
