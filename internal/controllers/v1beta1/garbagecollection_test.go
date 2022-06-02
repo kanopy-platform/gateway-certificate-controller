@@ -10,7 +10,6 @@ import (
 	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -38,7 +37,7 @@ func TestNewGarbageCollectionController(t *testing.T) {
 func TestGarbageCollectionControllerReconcile(t *testing.T) {
 	t.Parallel()
 
-	testCertificate := &v1.Certificate{
+	certificate := &v1.Certificate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-cert",
 			Namespace: "routing",
@@ -46,69 +45,76 @@ func TestGarbageCollectionControllerReconcile(t *testing.T) {
 		},
 	}
 
-	testGateway := &networkingv1beta1.Gateway{
+	gateway := &networkingv1beta1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-gateway",
 			Namespace: "test-ns",
 		},
 	}
 
+	reconcileRequest := reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Namespace: certificate.Namespace,
+			Name:      certificate.Name,
+		},
+	}
+
 	tests := []struct {
-		description      string
-		certs            []runtime.Object
-		gateways         []runtime.Object
-		reconcileRequest reconcile.Request
-		wantError        bool
+		description  string
+		certs        []*v1.Certificate
+		gateways     []*networkingv1beta1.Gateway
+		wantError    bool
+		wantNumCerts int
 	}{
 		{
-			description: "Certificate points to existing Gateway, no-op",
-			certs:       []runtime.Object{testCertificate},
-			gateways:    []runtime.Object{testGateway},
-			reconcileRequest: reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Namespace: testCertificate.Namespace,
-					Name:      testCertificate.Name,
-				},
-			},
-			wantError: false,
+			description:  "Certificate points to existing Gateway, no-op",
+			certs:        []*v1.Certificate{certificate},
+			gateways:     []*networkingv1beta1.Gateway{gateway},
+			wantError:    false,
+			wantNumCerts: 1,
 		},
 		{
-			description: "Certificate points to missing Gateway, delete Gateway",
-			certs:       []runtime.Object{testCertificate},
-			gateways:    []runtime.Object{}, // no Gateway
-			reconcileRequest: reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Namespace: testCertificate.Namespace,
-					Name:      testCertificate.Name,
-				},
-			},
-			wantError: false,
+			description:  "Certificate points to missing Gateway, delete Certificate",
+			certs:        []*v1.Certificate{certificate},
+			gateways:     []*networkingv1beta1.Gateway{}, // no Gateway
+			wantError:    false,
+			wantNumCerts: 0,
 		},
 		{
-			description: "Reconcile called on a Certificate that doesn't exist anymore",
-			certs:       []runtime.Object{}, // no Certificate
-			gateways:    []runtime.Object{testGateway},
-			reconcileRequest: reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Namespace: testCertificate.Namespace,
-					Name:      testCertificate.Name,
-				},
-			},
-			wantError: true,
+			description:  "Reconcile called on a Certificate that doesn't exist anymore",
+			certs:        []*v1.Certificate{}, // no Certificate
+			gateways:     []*networkingv1beta1.Gateway{},
+			wantError:    true,
+			wantNumCerts: 0,
 		},
 	}
 
 	for _, test := range tests {
-		gc := NewGarbageCollectionController(certmanagerfake.NewSimpleClientset(test.certs...), istiofake.NewSimpleClientset(test.gateways...))
-		r, err := gc.Reconcile(context.TODO(), test.reconcileRequest)
+		// setup
+		gc := NewGarbageCollectionController(certmanagerfake.NewSimpleClientset(), istiofake.NewSimpleClientset())
+
+		for _, cert := range test.certs {
+			_, err := gc.certmanagerClient.CertmanagerV1().Certificates(cert.Namespace).Create(context.TODO(), cert, metav1.CreateOptions{})
+			assert.NoError(t, err, test.description)
+		}
+		for _, gateway := range test.gateways {
+			_, err := gc.istioClient.NetworkingV1beta1().Gateways(gateway.Namespace).Create(context.TODO(), gateway, metav1.CreateOptions{})
+			assert.NoError(t, err, test.description)
+		}
+
+		// test Reconcile
+		r, err := gc.Reconcile(context.TODO(), reconcileRequest)
 
 		if test.wantError {
 			assert.Error(t, err, test.description)
 		} else {
 			assert.NoError(t, err, test.description)
 		}
-
 		assert.Equal(t, reconcile.Result{}, r)
+
+		certs, err := gc.certmanagerClient.CertmanagerV1().Certificates(certificate.Namespace).List(context.TODO(), metav1.ListOptions{})
+		assert.NoError(t, err, test.description)
+		assert.Equal(t, test.wantNumCerts, len(certs.Items), test.description)
 	}
 }
 
