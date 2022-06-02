@@ -70,7 +70,6 @@ func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr 
 }
 
 func (c *GarbageCollectionController) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	// set up a convenient log object so we don't have to type request over and over again
 	log := log.FromContext(ctx)
 
 	certIface := c.certmanagerClient.CertmanagerV1().Certificates(request.Namespace)
