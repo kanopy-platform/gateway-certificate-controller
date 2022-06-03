@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/version"
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
 	"istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
@@ -18,9 +19,12 @@ import (
 )
 
 const (
-	secretNameMaxLength           = 253
-	credentialNameRandomStrLen    = 10
-	lastAppliedMutationAnnotation = "v1beta1.kanopy-platform.github.io/last-applied-mutation"
+	secretNameMaxLength        = 253
+	credentialNameRandomStrLen = 10
+)
+
+var (
+	lastAppliedMutationAnnotation = fmt.Sprintf("%s/last-applied-mutation", version.String())
 )
 
 type GatewayMutationHook struct {
