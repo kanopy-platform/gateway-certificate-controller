@@ -14,6 +14,7 @@ import (
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	certmanagerversionedclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	"istio.io/pkg/log"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -51,6 +52,8 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().Int("webhook-listen-port", 8443, "Admission webhook listen port")
 	cmd.PersistentFlags().String("webhook-certs-dir", "/etc/webhook/certs", "Admission webhook TLS certificate directory")
 	cmd.PersistentFlags().Bool("dry-run", false, "Controller dry-run changes only")
+	cmd.PersistentFlags().String("certificate-namespace", "cert-manager", "Namespace that stores Certificates")
+	cmd.PersistentFlags().String("default-issuer", "selfsigned", "The default ClusterIssuer")
 
 	k8sFlags.AddFlags(cmd.PersistentFlags())
 	// no need to check err, this only checks if variadic args != 0
@@ -97,6 +100,11 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	cmc, err := certmanagerversionedclient.NewForConfig(cfg)
+	if err != nil {
+		return err
+	}
+
 	ctx := signals.SetupSignalHandler()
 
 	mgr, err := manager.New(cfg, manager.Options{
@@ -120,7 +128,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := v1beta1controllers.NewGatewayController(ic).SetupWithManager(ctx, mgr); err != nil {
+	if err := v1beta1controllers.NewGatewayController(ic, cmc, viper.GetString("certificate-namespace")).SetupWithManager(ctx, mgr); err != nil {
 		return err
 	}
 
