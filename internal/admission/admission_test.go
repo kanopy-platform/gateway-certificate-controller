@@ -117,9 +117,10 @@ func TestMutate(t *testing.T) {
 
 	gateway := v1beta1.Gateway{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      "example-gateway",
-			Namespace: "devops",
-			Labels:    map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"},
+			Name:        "example-gateway",
+			Namespace:   "devops",
+			Labels:      map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"},
+			Annotations: map[string]string{},
 		},
 		Spec: networkingv1beta1.Gateway{
 			Servers: []*networkingv1beta1.Server{
@@ -148,4 +149,46 @@ func TestMutate(t *testing.T) {
 	assert.Equal(t, gateway.Spec.Servers[1], mutatedGateway.Spec.Servers[1])
 	assert.Equal(t, gateway.Spec.Servers[2].Tls.Mode, mutatedGateway.Spec.Servers[2].Tls.Mode)
 	assert.NotEqual(t, gateway.Spec.Servers[2].Tls.CredentialName, mutatedGateway.Spec.Servers[2].Tls.CredentialName)
+}
+
+func TestCanMutateCredentialName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		description string
+		name        string
+		gatewayName string
+		want        bool
+	}{
+		{
+			description: "Should not mutate a credential name",
+			name:        "ns-gatewayname-ahssbs",
+			gatewayName: "gatewayname",
+			want:        false,
+		},
+		{
+			description: "Should not mutate credential name with gateway-name contains hyphens",
+			name:        "ns-gateway-name-sdfjhdfs",
+			gatewayName: "gateway-name",
+			want:        false,
+		},
+		{
+			description: "Should not mutate credential name with gateway-name any number of hyphens",
+			name:        "ns-gateway-name-long-name-sdfjhdfs",
+			gatewayName: "gateway-name-long-name",
+			want:        false,
+		},
+		{
+			description: "Should mutate a user set credential name",
+			name:        "defaultsecret",
+			want:        true,
+		},
+		{
+			description: "Should mutate a user set credential name using a similar format",
+			name:        "another-format-similar",
+			want:        true,
+		},
+	}
+	for _, test := range tests {
+		assert.Equal(t, test.want, canMutateCredentialName(test.name, "ns", test.gatewayName), test.description)
+	}
 }

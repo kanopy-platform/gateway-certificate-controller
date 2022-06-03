@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
 	"istio.io/client-go/pkg/apis/networking/v1beta1"
@@ -27,7 +28,9 @@ type GatewayMutationHook struct {
 }
 
 func NewGatewayMutationHook(client istioversionedclient.Interface) *GatewayMutationHook {
-	gmh := &GatewayMutationHook{istioClient: client}
+	gmh := &GatewayMutationHook{
+		istioClient: client,
+	}
 	return gmh
 }
 
@@ -79,6 +82,23 @@ func credentialName(ctx context.Context, namespace, name string) string {
 	return fmt.Sprintf("%s-%s", prefix, randomStr)
 }
 
+func getGatewayNameFromCredentialName(credentialName []string) string {
+	const excludeNamespace = 1
+	excludeRandomSuffix := len(credentialName) - 1
+	return strings.Join(credentialName[excludeNamespace:excludeRandomSuffix], "-")
+}
+
+func canMutateCredentialName(current string, namespace string, gatewayName string) bool {
+	parts := strings.Split(current, "-")
+	if len(parts) >= 3 {
+		pgn := getGatewayNameFromCredentialName(parts)
+		if parts[0] == namespace && pgn == gatewayName {
+			return false
+		}
+	}
+	return true
+}
+
 func mutate(ctx context.Context, gateway *v1beta1.Gateway) *v1beta1.Gateway {
 	log := log.FromContext(ctx)
 
@@ -88,12 +108,12 @@ func mutate(ctx context.Context, gateway *v1beta1.Gateway) *v1beta1.Gateway {
 		}
 
 		if s.Tls.Mode == networkingv1beta1.ServerTLSSettings_SIMPLE {
-			newCredentialName := credentialName(ctx, gateway.Namespace, gateway.Name)
-			log.Info(fmt.Sprintf("mutating gateway %s Tls.CredentialName, %s to %s", gateway.Name, s.Tls.CredentialName, newCredentialName))
-
-			s.Tls.CredentialName = newCredentialName
+			if canMutateCredentialName(s.Tls.CredentialName, gateway.Namespace, gateway.Name) {
+				newCredentialName := credentialName(ctx, gateway.Namespace, gateway.Name)
+				log.Info(fmt.Sprintf("mutating gateway %s Tls.CredentialName, %s to %s", gateway.Name, s.Tls.CredentialName, newCredentialName))
+				s.Tls.CredentialName = newCredentialName
+			}
 		}
 	}
-
 	return gateway
 }
