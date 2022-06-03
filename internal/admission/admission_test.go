@@ -117,10 +117,9 @@ func TestMutate(t *testing.T) {
 
 	gateway := v1beta1.Gateway{
 		ObjectMeta: v1.ObjectMeta{
-			Name:        "example-gateway",
-			Namespace:   "devops",
-			Labels:      map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"},
-			Annotations: map[string]string{},
+			Name:      "example-gateway",
+			Namespace: "devops",
+			Labels:    map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"},
 		},
 		Spec: networkingv1beta1.Gateway{
 			Servers: []*networkingv1beta1.Server{
