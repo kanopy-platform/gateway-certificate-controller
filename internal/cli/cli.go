@@ -6,6 +6,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 
+	"github.com/kanopy-platform/gateway-certificate-controller/internal/admission"
 	v1beta1controllers "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1"
 	logzap "github.com/kanopy-platform/gateway-certificate-controller/internal/log/zap"
 
@@ -132,7 +133,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// TODO add mutate handler
+	admission.NewGatewayMutationHook(ic).SetupWithManager(mgr)
 
 	return mgr.Start(ctx)
 }
