@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
 	"istio.io/client-go/pkg/apis/networking/v1beta1"
@@ -15,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -49,7 +49,11 @@ func (g *GatewayMutationHook) Handle(ctx context.Context, req admission.Request)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	gateway = mutate(ctx, gateway)
+	gateway, err = mutate(ctx, gateway.DeepCopy())
+	if err != nil {
+		log.Error(err, fmt.Sprintf("failed to mutate gateway: %s", gateway.Name))
+		return admission.Errored(http.StatusInternalServerError, err)
+	}
 
 	jsonGateway, err := json.Marshal(gateway)
 	if err != nil {
@@ -82,25 +86,56 @@ func credentialName(ctx context.Context, namespace, name string) string {
 	return fmt.Sprintf("%s-%s", prefix, randomStr)
 }
 
-func getGatewayNameFromCredentialName(credentialName []string) string {
-	const excludeNamespace = 1
-	excludeRandomSuffix := len(credentialName) - 1
-	return strings.Join(credentialName[excludeNamespace:excludeRandomSuffix], "-")
-}
-
-func canMutateCredentialName(current string, namespace string, gatewayName string) bool {
-	parts := strings.Split(current, "-")
-	if len(parts) >= 3 {
-		pgn := getGatewayNameFromCredentialName(parts)
-		if parts[0] == namespace && pgn == gatewayName {
-			return false
+func getGatewayServerByPortName(name string, gateway *v1beta1.Gateway) *networkingv1beta1.Server {
+	for _, s := range gateway.Spec.Servers {
+		if s.Port.Name == name {
+			return s
 		}
 	}
-	return true
+	return nil
 }
 
-func mutate(ctx context.Context, gateway *v1beta1.Gateway) *v1beta1.Gateway {
+func getLastAppliedGateway(gateway *v1beta1.Gateway) (*v1beta1.Gateway, error) {
+	var lastAppliedGateway *v1beta1.Gateway = nil
+	if gateway.Annotations != nil {
+		if js, ok := gateway.Annotations["v1beta1.kanopy-platform.github.io/last-applied-mutation"]; ok {
+			lastAppliedGateway = &v1beta1.Gateway{}
+			if err := yaml.Unmarshal([]byte(js), lastAppliedGateway); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return lastAppliedGateway, nil
+}
+
+func annotateMutation(gateway *v1beta1.Gateway) (*v1beta1.Gateway, error) {
+	ncs, err := yaml.Marshal(gateway)
+	if err != nil {
+		return nil, err
+	}
+	jsb, err := yaml.YAMLToJSON(ncs)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if gateway.Annotations == nil {
+		gateway.Annotations = map[string]string{}
+	}
+
+	gateway.Annotations["v1beta1.kanopy-platform.github.io/last-applied-mutation"] = string(jsb)
+	return gateway, nil
+}
+
+func mutate(ctx context.Context, gateway *v1beta1.Gateway) (*v1beta1.Gateway, error) {
 	log := log.FromContext(ctx)
+
+	lastAppliedGateway, err := getLastAppliedGateway(gateway)
+	if err != nil {
+		return nil, err
+	}
+
+	annotateLastApplied := false
 
 	for _, s := range gateway.Spec.Servers {
 		if s.Tls == nil {
@@ -108,12 +143,30 @@ func mutate(ctx context.Context, gateway *v1beta1.Gateway) *v1beta1.Gateway {
 		}
 
 		if s.Tls.Mode == networkingv1beta1.ServerTLSSettings_SIMPLE {
-			if canMutateCredentialName(s.Tls.CredentialName, gateway.Namespace, gateway.Name) {
+			var shouldMutate bool = true
+
+			if lastAppliedGateway != nil {
+				if cs := getGatewayServerByPortName(s.Port.Name, lastAppliedGateway); cs != nil {
+					shouldMutate = false
+					s.Tls.CredentialName = cs.Tls.CredentialName
+				}
+			}
+
+			if shouldMutate {
+				annotateLastApplied = true
 				newCredentialName := credentialName(ctx, gateway.Namespace, gateway.Name)
 				log.Info(fmt.Sprintf("mutating gateway %s Tls.CredentialName, %s to %s", gateway.Name, s.Tls.CredentialName, newCredentialName))
 				s.Tls.CredentialName = newCredentialName
 			}
+
 		}
 	}
-	return gateway
+
+	if annotateLastApplied {
+		gateway, err = annotateMutation(gateway)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return gateway, nil
 }

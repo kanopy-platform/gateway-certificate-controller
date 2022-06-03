@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	"sigs.k8s.io/yaml"
 )
 
 func TestGatewayMutationHook(t *testing.T) {
@@ -117,9 +118,10 @@ func TestMutate(t *testing.T) {
 
 	gateway := v1beta1.Gateway{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      "example-gateway",
-			Namespace: "devops",
-			Labels:    map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"},
+			Name:        "example-gateway",
+			Namespace:   "devops",
+			Labels:      map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"},
+			Annotations: map[string]string{},
 		},
 		Spec: networkingv1beta1.Gateway{
 			Servers: []*networkingv1beta1.Server{
@@ -142,7 +144,8 @@ func TestMutate(t *testing.T) {
 		},
 	}
 
-	mutatedGateway := mutate(context.TODO(), gateway.DeepCopy())
+	mutatedGateway, err := mutate(context.TODO(), gateway.DeepCopy())
+	assert.NoError(t, err)
 
 	assert.Equal(t, gateway.Spec.Servers[0], mutatedGateway.Spec.Servers[0])
 	assert.Equal(t, gateway.Spec.Servers[1], mutatedGateway.Spec.Servers[1])
@@ -150,44 +153,64 @@ func TestMutate(t *testing.T) {
 	assert.NotEqual(t, gateway.Spec.Servers[2].Tls.CredentialName, mutatedGateway.Spec.Servers[2].Tls.CredentialName)
 }
 
-func TestCanMutateCredentialName(t *testing.T) {
+func gatewayWithCredentialName(name string) v1beta1.Gateway {
+	return v1beta1.Gateway{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "example-gateway",
+			Namespace: "devops",
+			Labels:    map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"},
+		},
+		Spec: networkingv1beta1.Gateway{
+			Servers: []*networkingv1beta1.Server{
+				{
+					Port: &networkingv1beta1.Port{
+						Number: 443,
+						Name:   "https",
+					},
+					Bind:  "",
+					Hosts: []string{},
+					Tls: &networkingv1beta1.ServerTLSSettings{
+						Mode:           networkingv1beta1.ServerTLSSettings_SIMPLE,
+						CredentialName: name,
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestMutate_AnnotatedWithLastAppliedMutation(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		description string
-		name        string
-		gatewayName string
-		want        bool
-	}{
-		{
-			description: "Should not mutate a credential name",
-			name:        "ns-gatewayname-ahssbs",
-			gatewayName: "gatewayname",
-			want:        false,
-		},
-		{
-			description: "Should not mutate credential name with gateway-name contains hyphens",
-			name:        "ns-gateway-name-sdfjhdfs",
-			gatewayName: "gateway-name",
-			want:        false,
-		},
-		{
-			description: "Should not mutate credential name with gateway-name any number of hyphens",
-			name:        "ns-gateway-name-long-name-sdfjhdfs",
-			gatewayName: "gateway-name-long-name",
-			want:        false,
-		},
-		{
-			description: "Should mutate a user set credential name",
-			name:        "defaultsecret",
-			want:        true,
-		},
-		{
-			description: "Should mutate a user set credential name using a similar format",
-			name:        "another-format-similar",
-			want:        true,
-		},
+	gateway := gatewayWithCredentialName("should-be-mutated")
+	mutatedGateway, err := mutate(context.TODO(), gateway.DeepCopy())
+	assert.NoError(t, err)
+	assert.Contains(t, mutatedGateway.Annotations, "v1beta1.kanopy-platform.github.io/last-applied-mutation")
+}
+
+func TestMutate_AnnotatedWithLastAppliedMutationIsGateway(t *testing.T) {
+	t.Parallel()
+	gateway := gatewayWithCredentialName("should-be-mutated")
+	mutatedGateway, err := mutate(context.TODO(), gateway.DeepCopy())
+	assert.NoError(t, err)
+	annotatedGateway := &v1beta1.Gateway{}
+	assert.NoError(t, yaml.Unmarshal([]byte(mutatedGateway.Annotations["v1beta1.kanopy-platform.github.io/last-applied-mutation"]), annotatedGateway))
+	mutatedGateway.Annotations = nil
+	assert.Equal(t, mutatedGateway, annotatedGateway)
+}
+
+func TestMutate_AnnotatedWithLastAppliedMutationShouldNotMutate(t *testing.T) {
+	t.Parallel()
+	gateway := gatewayWithCredentialName("should-not-mutated")
+	ncs, err := yaml.Marshal(&gateway)
+	assert.NoError(t, err)
+	jsb, err := yaml.YAMLToJSON(ncs)
+	assert.NoError(t, err)
+
+	gateway.Annotations = map[string]string{
+		"v1beta1.kanopy-platform.github.io/last-applied-mutation": string(jsb),
 	}
-	for _, test := range tests {
-		assert.Equal(t, test.want, canMutateCredentialName(test.name, "ns", test.gatewayName), test.description)
-	}
+
+	mutatedGateway, err := mutate(context.TODO(), gateway.DeepCopy())
+	assert.NoError(t, err)
+	assert.Equal(t, "should-not-mutated", mutatedGateway.Spec.Servers[0].Tls.CredentialName)
 }
