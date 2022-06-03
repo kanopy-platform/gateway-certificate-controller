@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	secretNameMaxLength        = 253
-	credentialNameRandomStrLen = 10
+	secretNameMaxLength           = 253
+	credentialNameRandomStrLen    = 10
+	lastAppliedMutationAnnotation = "v1beta1.kanopy-platform.github.io/last-applied-mutation"
 )
 
 type GatewayMutationHook struct {
@@ -98,7 +99,7 @@ func getGatewayServerByPortName(name string, gateway *v1beta1.Gateway) *networki
 func getLastAppliedGateway(gateway *v1beta1.Gateway) (*v1beta1.Gateway, error) {
 	var lastAppliedGateway *v1beta1.Gateway = nil
 	if gateway.Annotations != nil {
-		if js, ok := gateway.Annotations["v1beta1.kanopy-platform.github.io/last-applied-mutation"]; ok {
+		if js, ok := gateway.Annotations[lastAppliedMutationAnnotation]; ok {
 			lastAppliedGateway = &v1beta1.Gateway{}
 			if err := yaml.Unmarshal([]byte(js), lastAppliedGateway); err != nil {
 				return nil, err
@@ -123,7 +124,7 @@ func annotateMutation(gateway *v1beta1.Gateway) (*v1beta1.Gateway, error) {
 		gateway.Annotations = map[string]string{}
 	}
 
-	gateway.Annotations["v1beta1.kanopy-platform.github.io/last-applied-mutation"] = string(jsb)
+	gateway.Annotations[lastAppliedMutationAnnotation] = string(jsb)
 	return gateway, nil
 }
 
@@ -158,7 +159,6 @@ func mutate(ctx context.Context, gateway *v1beta1.Gateway) (*v1beta1.Gateway, er
 				log.Info(fmt.Sprintf("mutating gateway %s Tls.CredentialName, %s to %s", gateway.Name, s.Tls.CredentialName, newCredentialName))
 				s.Tls.CredentialName = newCredentialName
 			}
-
 		}
 	}
 

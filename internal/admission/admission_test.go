@@ -184,7 +184,7 @@ func TestMutate_AnnotatedWithLastAppliedMutation(t *testing.T) {
 	gateway := gatewayWithCredentialName("should-be-mutated")
 	mutatedGateway, err := mutate(context.TODO(), gateway.DeepCopy())
 	assert.NoError(t, err)
-	assert.Contains(t, mutatedGateway.Annotations, "v1beta1.kanopy-platform.github.io/last-applied-mutation")
+	assert.Contains(t, mutatedGateway.Annotations, lastAppliedMutationAnnotation)
 }
 
 func TestMutate_AnnotatedWithLastAppliedMutationIsGateway(t *testing.T) {
@@ -193,7 +193,7 @@ func TestMutate_AnnotatedWithLastAppliedMutationIsGateway(t *testing.T) {
 	mutatedGateway, err := mutate(context.TODO(), gateway.DeepCopy())
 	assert.NoError(t, err)
 	annotatedGateway := &v1beta1.Gateway{}
-	assert.NoError(t, yaml.Unmarshal([]byte(mutatedGateway.Annotations["v1beta1.kanopy-platform.github.io/last-applied-mutation"]), annotatedGateway))
+	assert.NoError(t, yaml.Unmarshal([]byte(mutatedGateway.Annotations[lastAppliedMutationAnnotation]), annotatedGateway))
 	mutatedGateway.Annotations = nil
 	assert.Equal(t, mutatedGateway, annotatedGateway)
 }
@@ -207,7 +207,7 @@ func TestMutate_AnnotatedWithLastAppliedMutationShouldNotMutate(t *testing.T) {
 	assert.NoError(t, err)
 
 	gateway.Annotations = map[string]string{
-		"v1beta1.kanopy-platform.github.io/last-applied-mutation": string(jsb),
+		lastAppliedMutationAnnotation: string(jsb),
 	}
 
 	mutatedGateway, err := mutate(context.TODO(), gateway.DeepCopy())
