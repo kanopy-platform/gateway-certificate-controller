@@ -167,27 +167,3 @@ func TestMutate(t *testing.T) {
 	assert.Equal(t, gateway.Spec.Servers[2].Tls.Mode, mutatedGateway.Spec.Servers[2].Tls.Mode)
 	assert.NotEqual(t, gateway.Spec.Servers[2].Tls.CredentialName, mutatedGateway.Spec.Servers[2].Tls.CredentialName)
 }
-
-func gatewayWithCredentialName(name string) v1beta1.Gateway {
-	return v1beta1.Gateway{
-		ObjectMeta: v1.ObjectMeta{
-			Name:      "example-gateway",
-			Namespace: "devops",
-			Labels:    map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"},
-		},
-		Spec: networkingv1beta1.Gateway{
-			Servers: []*networkingv1beta1.Server{
-				{
-					Port: &networkingv1beta1.Port{
-						Number: 443,
-						Name:   "https",
-					},
-					Tls: &networkingv1beta1.ServerTLSSettings{
-						Mode:           networkingv1beta1.ServerTLSSettings_SIMPLE,
-						CredentialName: name,
-					},
-				},
-			},
-		},
-	}
-}
