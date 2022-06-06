@@ -159,8 +159,7 @@ func TestMutate(t *testing.T) {
 		},
 	}
 
-	mutatedGateway, err := mutate(context.TODO(), gateway.DeepCopy())
-	assert.NoError(t, err)
+	mutatedGateway := mutate(context.TODO(), gateway.DeepCopy())
 
 	assert.Equal(t, gateway.Spec.Servers[0], mutatedGateway.Spec.Servers[0])
 	assert.Equal(t, gateway.Spec.Servers[1], mutatedGateway.Spec.Servers[1])

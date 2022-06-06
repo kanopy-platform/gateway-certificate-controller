@@ -46,11 +46,7 @@ func (g *GatewayMutationHook) Handle(ctx context.Context, req admission.Request)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	gateway, err = mutate(ctx, gateway.DeepCopy())
-	if err != nil {
-		log.Error(err, fmt.Sprintf("failed to mutate gateway: %s", gateway.Name))
-		return admission.Errored(http.StatusInternalServerError, err)
-	}
+	gateway = mutate(ctx, gateway.DeepCopy())
 
 	jsonGateway, err := json.Marshal(gateway)
 	if err != nil {
@@ -80,7 +76,7 @@ func credentialName(ctx context.Context, namespace, name string, portName string
 	return fmt.Sprintf("%s-%s", prefix, portName)
 }
 
-func mutate(ctx context.Context, gateway *v1beta1.Gateway) (*v1beta1.Gateway, error) {
+func mutate(ctx context.Context, gateway *v1beta1.Gateway) *v1beta1.Gateway {
 	log := log.FromContext(ctx)
 
 	for _, s := range gateway.Spec.Servers {
@@ -95,5 +91,5 @@ func mutate(ctx context.Context, gateway *v1beta1.Gateway) (*v1beta1.Gateway, er
 		}
 	}
 
-	return gateway, nil
+	return gateway
 }
