@@ -17,7 +17,6 @@ import (
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	certmanagerversionedclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
-	"istio.io/pkg/log"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -121,7 +120,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	})
 
 	if err != nil {
-		log.Error(err, "unable to set up  controller manager")
+		klog.Log.Error(err, "unable to set up  controller manager")
 		return err
 	}
 
