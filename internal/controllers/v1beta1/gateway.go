@@ -9,6 +9,7 @@ import (
 	"time"
 
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
+	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/version"
 
 	certmanagerclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	"istio.io/api/networking/v1beta1"
@@ -33,6 +34,11 @@ const (
 	FieldManager = "isto-cert-controller"
 )
 
+var (
+	IssuerAnnotation = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-issuer")
+	ManagedLabel     = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-managed")
+)
+
 type certificateHandler interface {
 	CreateCertificate(ctx context.Context, gateway *networkingv1beta1.Gateway, server *v1beta1.Server) error
 	UpdateCertificate(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1beta1.Gateway, server *v1beta1.Server) error
@@ -41,17 +47,24 @@ type certificateHandler interface {
 type GatewayController struct {
 	istioClient          istioversionedclient.Interface
 	certClient           certmanagerclient.Interface
+	dryRun               bool
 	name                 string
 	certificateNamespace string
+	clusterIssuer        string
 	certHandler          certificateHandler
 }
 
-func NewGatewayController(istioClient istioversionedclient.Interface, certClient certmanagerclient.Interface, certNamespace string) *GatewayController {
+func NewGatewayController(istioClient istioversionedclient.Interface, certClient certmanagerclient.Interface, opts ...OptionsFunc) *GatewayController {
 	gr := &GatewayController{
 		name:                 "istio-gateway-controller",
 		istioClient:          istioClient,
 		certClient:           certClient,
-		certificateNamespace: certNamespace,
+		certificateNamespace: "default",
+		clusterIssuer:        "default",
+	}
+
+	for _, opt := range opts {
+		opt(gr)
 	}
 
 	gr.certHandler = gr
@@ -130,9 +143,10 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 }
 
 func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *networkingv1beta1.Gateway, server *v1beta1.Server) error {
-	issuer := "default"
+	log := log.FromContext(ctx)
+	issuer := c.clusterIssuer
 
-	if i, ok := gateway.Annotations["v1beta1.kanopy-platform.github.io/istio-cert-controller-issuer"]; ok {
+	if i, ok := gateway.Annotations[IssuerAnnotation]; ok {
 		issuer = i
 	}
 
@@ -147,7 +161,7 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   server.Tls.CredentialName,
-			Labels: map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-managed": fmt.Sprintf("%s.%s", gateway.Name, gateway.Namespace)},
+			Labels: map[string]string{ManagedLabel: fmt.Sprintf("%s.%s", gateway.Name, gateway.Namespace)},
 		},
 		Spec: v1certmanager.CertificateSpec{
 			DNSNames:   getSortedHostsWithoutNamespace(server.Hosts),
@@ -159,7 +173,10 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 			},
 		},
 	}
-
+	if c.dryRun {
+		log.Info("[dryrun] create certificate", "cert", cert)
+		return nil
+	}
 	_, err := c.certClient.CertmanagerV1().Certificates(c.certificateNamespace).Create(ctx, cert, metav1.CreateOptions{FieldManager: FieldManager})
 	return err
 }
@@ -186,6 +203,10 @@ func (c *GatewayController) UpdateCertificate(ctx context.Context, cert *v1certm
 
 	if updatedDNSNames || updatedIssuer {
 		log.V(1).Info("pre-update", "cert", cert)
+		if c.dryRun {
+			log.Info("[dryrun] update certificate", "cert", cert)
+			return nil
+		}
 		_, err := c.certClient.CertmanagerV1().Certificates(c.certificateNamespace).Update(ctx, cert, metav1.UpdateOptions{FieldManager: FieldManager})
 		if err != nil {
 			log.Error(err, "error on certificate update", "cert", cert)
@@ -199,9 +220,8 @@ func (c *GatewayController) UpdateCertificate(ctx context.Context, cert *v1certm
 func updateCertificateIssuer(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1beta1.Gateway) (*v1certmanager.Certificate, bool) {
 	log := log.FromContext(ctx)
 	issuer := cert.Spec.IssuerRef.Name
-	log.V(1).Info("gateway", "annotations", gateway.Annotations)
 
-	if i, ok := gateway.Annotations["v1beta1.kanopy-platform.github.io/istio-cert-controller-issuer"]; ok {
+	if i, ok := gateway.Annotations[IssuerAnnotation]; ok {
 		log.V(1).Info("got issuer from annotation", "issuer", i)
 		issuer = i
 	}

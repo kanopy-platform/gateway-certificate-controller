@@ -129,7 +129,11 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := v1beta1controllers.NewGatewayController(ic, cmc, viper.GetString("certificate-namespace")).SetupWithManager(ctx, mgr); err != nil {
+	if err := v1beta1controllers.NewGatewayController(ic, cmc,
+		v1beta1controllers.WithDryRun(viper.GetBool("dry-run")),
+		v1beta1controllers.WithDefaultClusterIssuer(viper.GetString("default-issuer")),
+		v1beta1controllers.WithCertificateNamespace(viper.GetString("certificate-namespace"))).
+		SetupWithManager(ctx, mgr); err != nil {
 		return err
 	}
 

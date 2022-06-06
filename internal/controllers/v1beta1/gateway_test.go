@@ -40,6 +40,7 @@ type GatewayOptions struct {
 	Certificates   []runtime.Object
 	Hosts          []string
 	CredentialName string
+	DryRun         bool
 	Annotations    map[string]string
 	Labels         map[string]string
 	Servers        []*networkingv1beta1.Server
@@ -60,6 +61,12 @@ func namespacedHosts(hosts ...string) []string {
 func WithCredentialName(name string) func(*GatewayOptions) {
 	return func(gopt *GatewayOptions) {
 		gopt.CredentialName = name
+	}
+}
+
+func WithTestDryRun() func(*GatewayOptions) {
+	return func(gopt *GatewayOptions) {
+		gopt.DryRun = true
 	}
 }
 
@@ -152,19 +159,19 @@ type TestHelper struct {
 	Controller  *controllerSpy
 }
 
-func NewTestHelper(certificates ...runtime.Object) *TestHelper {
+func NewTestHelper(opts *GatewayOptions) *TestHelper {
 	ics := istiofake.NewSimpleClientset()
-	ccs := certmanagerfake.NewSimpleClientset(certificates...)
+	ccs := certmanagerfake.NewSimpleClientset(opts.Certificates...)
 	return &TestHelper{
 		IstioClient: ics,
 		CertClient:  ccs,
-		Controller:  setupControllerWithSpy(ics, ccs),
+		Controller:  setupControllerWithSpy(ics, ccs, opts),
 	}
 }
 
 func NewTestHelperWithGateways(opts ...func(*GatewayOptions)) *TestHelper {
 	gopts := NewGatewayOptions(opts...)
-	helper := NewTestHelper(gopts.Certificates...)
+	helper := NewTestHelper(gopts)
 
 	helper.IstioClient.NetworkingV1beta1().(*networkingv1beta1fake.FakeNetworkingV1beta1).PrependReactor(
 		"get",
@@ -199,9 +206,9 @@ func NewTestHelperWithCertificates(opts ...func(*GatewayOptions)) *TestHelper {
 	return helper
 }
 
-func setupControllerWithSpy(cs *istiofake.Clientset, certFake *certmanagerfake.Clientset) *controllerSpy {
+func setupControllerWithSpy(cs *istiofake.Clientset, certFake *certmanagerfake.Clientset, opts *GatewayOptions) *controllerSpy {
 	spy := &controllerSpy{
-		GatewayController: NewGatewayController(cs, certFake, TestCertNamespace),
+		GatewayController: NewGatewayController(cs, certFake, WithDryRun(opts.DryRun), WithCertificateNamespace(TestCertNamespace)),
 	}
 	spy.GatewayController.certHandler = spy
 	return spy
@@ -248,7 +255,7 @@ func assertCertificateUpdated(t *testing.T, helper *TestHelper) {
 
 func TestGatewayControllerReconcileNoError(t *testing.T) {
 	t.Parallel()
-	g := NewGatewayController(istiofake.NewSimpleClientset(), certmanagerfake.NewSimpleClientset(), "default")
+	g := NewGatewayController(istiofake.NewSimpleClientset(), certmanagerfake.NewSimpleClientset(), WithCertificateNamespace("default"))
 	r, err := g.Reconcile(context.TODO(), reconcile.Request{})
 	assert.NoError(t, err)
 	assert.Equal(t, reconcile.Result{}, r)
@@ -256,7 +263,7 @@ func TestGatewayControllerReconcileNoError(t *testing.T) {
 
 func TestGatewayReconcile_OkOnNotExists(t *testing.T) {
 	t.Parallel()
-	helper := NewTestHelper()
+	helper := NewTestHelper(NewGatewayOptions())
 	r, err := helper.Controller.Reconcile(context.TODO(), reconcileRequest())
 	assert.NoError(t, err)
 	assert.Equal(t, reconcile.Result{}, r)
@@ -302,7 +309,7 @@ func TestGatewayReconcile_CreateCertificateLabeledAsManaged(t *testing.T) {
 	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
 	assert.NoError(t, err)
 	assert.NotNil(t, cert)
-	assert.Equal(t, fmt.Sprintf("%s.%s", TestGatewayName, TestNamespace), cert.Labels["v1beta1.kanopy-platform.github.io/istio-cert-controller-managed"])
+	assert.Equal(t, fmt.Sprintf("%s.%s", TestGatewayName, TestNamespace), cert.Labels[ManagedLabel])
 }
 
 func TestGatewayReconcile_CreateCertificateWithHosts(t *testing.T) {
@@ -327,7 +334,7 @@ func TestGatewayReconcile_CreatCertificateWithDefaultIssuer(t *testing.T) {
 func TestGatewayReconcile_CreatCertificateWithClusterIssuerFromGatewayAnnotation(t *testing.T) {
 	t.Parallel()
 	helper := NewTestHelperWithGateways(WithAnnotations(map[string]string{
-		"v1beta1.kanopy-platform.github.io/istio-cert-controller-issuer": "testissuer",
+		IssuerAnnotation: "testissuer",
 	}))
 	assertCreateCertificateCalled(t, helper)
 	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
@@ -378,7 +385,7 @@ func TestGatewayReconcile_UpdatesCertificateWithDeletedHost(t *testing.T) {
 func TestGatewayReconcile_UpdatesCertificateWithNewIssue(t *testing.T) {
 	t.Parallel()
 	helper := NewTestHelperWithCertificates(WithAnnotations(map[string]string{
-		"v1beta1.kanopy-platform.github.io/istio-cert-controller-issuer": "new",
+		IssuerAnnotation: "new",
 	}))
 	assertCertificateUpdated(t, helper)
 	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
@@ -398,4 +405,32 @@ func TestGatewayReconcile_UpdateCertificateNoOp(t *testing.T) {
 
 	assertCertificateUpdated(t, helper)
 	assert.Equal(t, 0, updated)
+}
+
+func TestGatewayReconcile_UpdatesCertificateDryRunWillNotCommit(t *testing.T) {
+	t.Parallel()
+	helper := NewTestHelperWithCertificates(WithTestDryRun(), WithAnnotations(map[string]string{
+		IssuerAnnotation: "achange",
+	}))
+
+	updated := 0
+	helper.CertClient.CertmanagerV1().(*certmanagerv1fake.FakeCertmanagerV1).PrependReactor("update", "certificates", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+		updated++
+		return true, nil, nil
+	})
+
+	assertCertificateUpdated(t, helper)
+	assert.Equal(t, 0, updated)
+}
+
+func TestGatewayReconcile_CreatCertificateWithDryRun(t *testing.T) {
+	t.Parallel()
+	helper := NewTestHelperWithGateways(WithTestDryRun())
+	created := 0
+	helper.CertClient.CertmanagerV1().(*certmanagerv1fake.FakeCertmanagerV1).PrependReactor("create", "certificates", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+		created++
+		return true, nil, nil
+	})
+	assertCreateCertificateCalled(t, helper)
+	assert.Equal(t, 0, created)
 }
