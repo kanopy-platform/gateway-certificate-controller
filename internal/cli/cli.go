@@ -87,7 +87,7 @@ func (c *RootCommand) persistentPreRunE(cmd *cobra.Command, args []string) error
 func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	dryRun := viper.GetBool("dry-run")
 	if dryRun {
-		klog.Log.Info("running in dry-run mode.")
+		klog.Log.Info("running in dry-run mode")
 	}
 
 	cfg, err := c.k8sFlags.ToRESTConfig()
