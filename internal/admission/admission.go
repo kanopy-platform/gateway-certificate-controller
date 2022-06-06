@@ -65,7 +65,7 @@ func (g *GatewayMutationHook) InjectDecoder(d *admission.Decoder) error {
 func credentialName(ctx context.Context, namespace, name string, portName string) string {
 	log := log.FromContext(ctx)
 	prefix := fmt.Sprintf("%s-%s", namespace, name)
-	// Leave enough space for a dash and the random string
+	// Leave enough space for dash before the portName suffix.
 	maxPrefixLen := secretNameMaxLength - len(portName) - 1
 
 	if len(prefix) > maxPrefixLen {
