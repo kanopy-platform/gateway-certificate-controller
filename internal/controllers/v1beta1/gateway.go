@@ -3,7 +3,9 @@ package v1beta1
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
@@ -27,8 +29,11 @@ import (
 	v1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 )
 
-type eventReconciler interface {
-	Cleanup(ctx context.Context, request reconcile.Request) error
+const (
+	FieldManager = "isto-cert-controller"
+)
+
+type certificateHandler interface {
 	CreateCertificate(ctx context.Context, gateway *networkingv1beta1.Gateway, server *v1beta1.Server) error
 	UpdateCertificate(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1beta1.Gateway, server *v1beta1.Server) error
 }
@@ -38,7 +43,7 @@ type GatewayController struct {
 	certClient           certmanagerclient.Interface
 	name                 string
 	certificateNamespace string
-	events               eventReconciler
+	certHandler          certificateHandler
 }
 
 func NewGatewayController(istioClient istioversionedclient.Interface, certClient certmanagerclient.Interface, certNamespace string) *GatewayController {
@@ -49,7 +54,7 @@ func NewGatewayController(istioClient istioversionedclient.Interface, certClient
 		certificateNamespace: certNamespace,
 	}
 
-	gr.events = gr
+	gr.certHandler = gr
 	return gr
 }
 
@@ -84,13 +89,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 
 	if err != nil {
 		if errors.IsNotFound(err) {
-			// check and delete cert
-			// TODO, this can be left up to garbage collection
-			log.Info("Cleaned up certificates")
-			if err := c.events.Cleanup(ctx, request); err != nil {
-				return reconcile.Result{Requeue: true}, err
-			}
-			return reconcile.Result{}, nil
+			return reconcile.Result{}, nil // garbage collection will handle
 		}
 
 		log.Error(err, "Error reconciling gateway, requeued")
@@ -105,7 +104,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 		cert, err := c.certClient.CertmanagerV1().Certificates(c.certificateNamespace).Get(ctx, s.Tls.CredentialName, metav1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
-				if err := c.events.CreateCertificate(ctx, gateway, s); err != nil {
+				if err := c.certHandler.CreateCertificate(ctx, gateway, s); err != nil {
 					return reconcile.Result{
 						Requeue: true,
 					}, err
@@ -119,7 +118,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 
 		if cert != nil {
 			log.V(1).Info("Found certificate", "server", s)
-			if err := c.events.UpdateCertificate(ctx, cert.DeepCopy(), gateway, s); err != nil {
+			if err := c.certHandler.UpdateCertificate(ctx, cert.DeepCopy(), gateway, s); err != nil {
 				return reconcile.Result{
 					Requeue: true,
 				}, err
@@ -128,10 +127,6 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 	}
 
 	return reconcile.Result{}, nil
-}
-
-func (c *GatewayController) Cleanup(ctx context.Context, request reconcile.Request) error {
-	return nil
 }
 
 func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *networkingv1beta1.Gateway, server *v1beta1.Server) error {
@@ -145,8 +140,6 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 		return nil
 	}
 
-	sort.Strings(server.Hosts)
-
 	cert := &v1certmanager.Certificate{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Certificate",
@@ -154,13 +147,10 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   server.Tls.CredentialName,
-			Labels: map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-managed": "true"},
-			Annotations: map[string]string{
-				"v1beta1.kanopy-platform.github.io/istio-cert-controller-managed": fmt.Sprintf("%s.%s", gateway.Name, gateway.Namespace),
-			},
+			Labels: map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-managed": fmt.Sprintf("%s.%s", gateway.Name, gateway.Namespace)},
 		},
 		Spec: v1certmanager.CertificateSpec{
-			DNSNames:   server.Hosts,
+			DNSNames:   getSortedHostsWithoutNamespace(server.Hosts),
 			SecretName: server.Tls.CredentialName,
 			IssuerRef: v1.ObjectReference{
 				Kind:  "ClusterIssuer",
@@ -170,15 +160,44 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 		},
 	}
 
-	_, err := c.certClient.CertmanagerV1().Certificates(c.certificateNamespace).Create(ctx, cert, metav1.CreateOptions{FieldManager: "istio-cert-controller"})
+	_, err := c.certClient.CertmanagerV1().Certificates(c.certificateNamespace).Create(ctx, cert, metav1.CreateOptions{FieldManager: FieldManager})
 	return err
+}
+
+func getSortedHostsWithoutNamespace(serverHosts []string) []string {
+	hosts := make([]string, len(serverHosts))
+
+	for i, h := range serverHosts {
+		parts := strings.Split(h, "/")
+		hosts[i] = h
+		if len(parts) > 1 {
+			hosts[i] = parts[1]
+		}
+	}
+	sort.Strings(hosts)
+	return hosts
 }
 
 func (c *GatewayController) UpdateCertificate(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1beta1.Gateway, server *v1beta1.Server) error {
 	log := log.FromContext(ctx)
-	sort.Strings(server.Hosts)
-	cert.Spec.DNSNames = server.Hosts
 
+	cert, updatedIssuer := updateCertificateIssuer(ctx, cert, gateway)
+	cert, updatedDNSNames := updateCertificateDNSNames(ctx, cert, server)
+
+	if updatedDNSNames || updatedIssuer {
+		log.V(1).Info("pre-update", "cert", cert)
+		_, err := c.certClient.CertmanagerV1().Certificates(c.certificateNamespace).Update(ctx, cert, metav1.UpdateOptions{FieldManager: FieldManager})
+		if err != nil {
+			log.Error(err, "error on certificate update", "cert", cert)
+		}
+		return err
+	}
+
+	return nil
+}
+
+func updateCertificateIssuer(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1beta1.Gateway) (*v1certmanager.Certificate, bool) {
+	log := log.FromContext(ctx)
 	issuer := cert.Spec.IssuerRef.Name
 	log.V(1).Info("gateway", "annotations", gateway.Annotations)
 
@@ -187,16 +206,14 @@ func (c *GatewayController) UpdateCertificate(ctx context.Context, cert *v1certm
 		issuer = i
 	}
 
+	updated := cert.Spec.IssuerRef.Name != issuer
 	cert.Spec.IssuerRef.Name = issuer
+	return cert, updated
+}
 
-	log.V(1).Info("pre-update", "cert", cert)
-	fmt.Printf("%#v\n", cert)
-
-	cu, err := c.certClient.CertmanagerV1().Certificates(c.certificateNamespace).Update(ctx, cert, metav1.UpdateOptions{FieldManager: "isto-cert-controller"})
-	fmt.Println("err: ", err)
-	fmt.Printf("%#v\n", cu)
-	if err != nil {
-		log.Error(err, "error on certificate update", "cert", cert)
-	}
-	return err
+func updateCertificateDNSNames(ctx context.Context, cert *v1certmanager.Certificate, server *v1beta1.Server) (*v1certmanager.Certificate, bool) {
+	hosts := getSortedHostsWithoutNamespace(server.Hosts)
+	updated := !reflect.DeepEqual(hosts, cert.Spec.DNSNames)
+	cert.Spec.DNSNames = hosts
+	return cert, updated
 }
