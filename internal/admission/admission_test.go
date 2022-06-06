@@ -16,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
-	"sigs.k8s.io/yaml"
 )
 
 func TestGatewayMutationHook(t *testing.T) {
@@ -39,6 +38,10 @@ func TestGatewayMutationHook(t *testing.T) {
 		Spec: networkingv1beta1.Gateway{
 			Servers: []*networkingv1beta1.Server{
 				{
+					Port: &networkingv1beta1.Port{
+						Number: 443,
+						Name:   "https",
+					},
 					Tls: &networkingv1beta1.ServerTLSSettings{
 						Mode:           networkingv1beta1.ServerTLSSettings_SIMPLE,
 						CredentialName: "should-be-replaced",
@@ -80,7 +83,7 @@ func TestGatewayMutationHook(t *testing.T) {
 
 func TestCredentialName(t *testing.T) {
 	t.Parallel()
-
+	const portName = "https"
 	tests := []struct {
 		description  string
 		namespace    string
@@ -92,21 +95,21 @@ func TestCredentialName(t *testing.T) {
 			description:  "generated credentialName within character limit",
 			namespace:    "devops",
 			name:         "example-gateway",
-			wantContains: "devops-example-gateway-",
-			wantLen:      33,
+			wantContains: fmt.Sprintf("devops-example-gateway-%s", portName),
+			wantLen:      28,
 		},
 		{
 			description: "generated credentialName is truncated",
 			namespace:   strings.Repeat("a", 125),
 			name:        strings.Repeat("b", 125),
 			// some characters from the end of name should be truncated
-			wantContains: fmt.Sprintf("%s-%s-", strings.Repeat("a", 125), strings.Repeat("b", 116)),
+			wantContains: fmt.Sprintf("%s-%s-%s", strings.Repeat("a", 125), strings.Repeat("b", 121), portName),
 			wantLen:      secretNameMaxLength,
 		},
 	}
 
 	for _, test := range tests {
-		n := credentialName(context.TODO(), test.namespace, test.name)
+		n := credentialName(context.TODO(), test.namespace, test.name, portName)
 
 		assert.Contains(t, n, test.wantContains, test.description)
 		assert.Equal(t, test.wantLen, len(n), test.description)
@@ -127,14 +130,26 @@ func TestMutate(t *testing.T) {
 			Servers: []*networkingv1beta1.Server{
 				{
 					Tls: nil,
+					Port: &networkingv1beta1.Port{
+						Number: 80,
+						Name:   "http",
+					},
 				},
 				{
+					Port: &networkingv1beta1.Port{
+						Number: 443,
+						Name:   "https",
+					},
 					Tls: &networkingv1beta1.ServerTLSSettings{
 						Mode:           networkingv1beta1.ServerTLSSettings_PASSTHROUGH,
 						CredentialName: "should-not-be-mutated",
 					},
 				},
 				{
+					Port: &networkingv1beta1.Port{
+						Number: 443,
+						Name:   "https",
+					},
 					Tls: &networkingv1beta1.ServerTLSSettings{
 						Mode:           networkingv1beta1.ServerTLSSettings_SIMPLE,
 						CredentialName: "should-be-mutated",
@@ -167,8 +182,6 @@ func gatewayWithCredentialName(name string) v1beta1.Gateway {
 						Number: 443,
 						Name:   "https",
 					},
-					Bind:  "",
-					Hosts: []string{},
 					Tls: &networkingv1beta1.ServerTLSSettings{
 						Mode:           networkingv1beta1.ServerTLSSettings_SIMPLE,
 						CredentialName: name,
@@ -177,40 +190,4 @@ func gatewayWithCredentialName(name string) v1beta1.Gateway {
 			},
 		},
 	}
-}
-
-func TestMutate_AnnotatedWithLastAppliedMutation(t *testing.T) {
-	t.Parallel()
-	gateway := gatewayWithCredentialName("should-be-mutated")
-	mutatedGateway, err := mutate(context.TODO(), gateway.DeepCopy())
-	assert.NoError(t, err)
-	assert.Contains(t, mutatedGateway.Annotations, lastAppliedMutationAnnotation)
-}
-
-func TestMutate_AnnotatedWithLastAppliedMutationIsGateway(t *testing.T) {
-	t.Parallel()
-	gateway := gatewayWithCredentialName("should-be-mutated")
-	mutatedGateway, err := mutate(context.TODO(), gateway.DeepCopy())
-	assert.NoError(t, err)
-	annotatedGateway := &v1beta1.Gateway{}
-	assert.NoError(t, yaml.Unmarshal([]byte(mutatedGateway.Annotations[lastAppliedMutationAnnotation]), annotatedGateway))
-	mutatedGateway.Annotations = nil
-	assert.Equal(t, mutatedGateway, annotatedGateway)
-}
-
-func TestMutate_AnnotatedWithLastAppliedMutationShouldNotMutate(t *testing.T) {
-	t.Parallel()
-	gateway := gatewayWithCredentialName("should-not-mutated")
-	ncs, err := yaml.Marshal(&gateway)
-	assert.NoError(t, err)
-	jsb, err := yaml.YAMLToJSON(ncs)
-	assert.NoError(t, err)
-
-	gateway.Annotations = map[string]string{
-		lastAppliedMutationAnnotation: string(jsb),
-	}
-
-	mutatedGateway, err := mutate(context.TODO(), gateway.DeepCopy())
-	assert.NoError(t, err)
-	assert.Equal(t, "should-not-mutated", mutatedGateway.Spec.Servers[0].Tls.CredentialName)
 }
