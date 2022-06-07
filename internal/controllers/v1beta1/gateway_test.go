@@ -269,10 +269,13 @@ func TestGatewayReconcile_OkOnNotExists(t *testing.T) {
 	assert.Equal(t, reconcile.Result{}, r)
 }
 
-func TestGatewayReconcile_CallsCreateCertificate(t *testing.T) {
+func TestGatewyReconcile_CreatesCertificateForGateway(t *testing.T) {
 	t.Parallel()
 	helper := NewTestHelperWithGateways()
 	assertCreateCertificateCalled(t, helper)
+	certList, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).List(context.TODO(), metav1.ListOptions{})
+	assert.NoError(t, err)
+	assert.Len(t, certList.Items, 1)
 }
 
 func TestGatewayReconcile_CallsCreateCertificateWithError(t *testing.T) {
@@ -282,15 +285,6 @@ func TestGatewayReconcile_CallsCreateCertificateWithError(t *testing.T) {
 	r, err := helper.Controller.Reconcile(context.TODO(), reconcileRequest())
 	assert.Error(t, err)
 	assert.Equal(t, reconcile.Result{Requeue: true}, r)
-}
-
-func TestGatewyReconcile_CreatesCertificateForGateway(t *testing.T) {
-	t.Parallel()
-	helper := NewTestHelperWithGateways()
-	assertCreateCertificateCalled(t, helper)
-	certList, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).List(context.TODO(), metav1.ListOptions{})
-	assert.NoError(t, err)
-	assert.Len(t, certList.Items, 1)
 }
 
 func TestGatewayReconcile_CreateCertificateUsingCredentialName(t *testing.T) {
@@ -343,7 +337,7 @@ func TestGatewayReconcile_CreatCertificateWithClusterIssuerFromGatewayAnnotation
 	assert.Equal(t, "ClusterIssuer", cert.Spec.IssuerRef.Kind)
 }
 
-func TestGatewayReconcile_SkipCertificateForTLSModeNotSimple(t *testing.T) {
+func TestGatewayReconcile_SkipCertificateForTLSModePassthrough(t *testing.T) {
 	t.Parallel()
 	helper := NewTestHelperWithGateways(AppendServer(&networkingv1beta1.Server{
 		Hosts: []string{"pass.example.com"},
@@ -356,6 +350,7 @@ func TestGatewayReconcile_SkipCertificateForTLSModeNotSimple(t *testing.T) {
 	certList, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).List(context.TODO(), metav1.ListOptions{})
 	assert.NoError(t, err)
 	assert.Len(t, certList.Items, 1)
+	assert.Equal(t, []string{"test1.example.com", "test2.example.com"}, certList.Items[0].Spec.DNSNames)
 }
 
 func TestGatewayReconcile_CallsUpdateCertificateWhenCertificateExists(t *testing.T) {
@@ -382,7 +377,7 @@ func TestGatewayReconcile_UpdatesCertificateWithDeletedHost(t *testing.T) {
 	assert.Equal(t, []string{"test2.example.com"}, cert.Spec.DNSNames)
 }
 
-func TestGatewayReconcile_UpdatesCertificateWithNewIssue(t *testing.T) {
+func TestGatewayReconcile_UpdatesCertificateWithNewIssuer(t *testing.T) {
 	t.Parallel()
 	helper := NewTestHelperWithCertificates(WithAnnotations(map[string]string{
 		IssuerAnnotation: "new",
