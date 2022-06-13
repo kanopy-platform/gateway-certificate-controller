@@ -8,9 +8,9 @@ import (
 
 	"github.com/kanopy-platform/gateway-certificate-controller/internal/admission"
 	v1beta1controllers "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1"
+	v1beta1gc "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1/garbagecollection"
 	logzap "github.com/kanopy-platform/gateway-certificate-controller/internal/log/zap"
 
-	certmanagerversionedclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
@@ -137,7 +137,9 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := v1beta1controllers.NewGarbageCollectionController(certmanagerClient, ic).WithDryRun(dryRun).SetupWithManager(ctx, mgr); err != nil {
+	if err := v1beta1gc.NewGarbageCollectionController(ic, cmc,
+		v1beta1gc.WithDryRun(dryRun)).
+		SetupWithManager(ctx, mgr); err != nil {
 		return err
 	}
 

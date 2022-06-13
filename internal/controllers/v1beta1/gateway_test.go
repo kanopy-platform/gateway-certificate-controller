@@ -12,6 +12,7 @@ import (
 
 	certmanagerfake "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/fake"
 	certmanagerv1fake "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/typed/certmanager/v1/fake"
+	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
 	"istio.io/client-go/pkg/apis/networking/v1beta1"
 	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
@@ -303,7 +304,7 @@ func TestGatewayReconcile_CreateCertificateLabeledAsManaged(t *testing.T) {
 	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
 	assert.NoError(t, err)
 	assert.NotNil(t, cert)
-	assert.Equal(t, fmt.Sprintf("%s.%s", TestGatewayName, TestNamespace), cert.Labels[ManagedLabel])
+	assert.Equal(t, fmt.Sprintf("%s.%s", TestGatewayName, TestNamespace), cert.Labels[v1beta1labels.ManagedLabel])
 }
 
 func TestGatewayReconcile_CreateCertificateWithHosts(t *testing.T) {
@@ -328,7 +329,7 @@ func TestGatewayReconcile_CreatCertificateWithDefaultIssuer(t *testing.T) {
 func TestGatewayReconcile_CreatCertificateWithClusterIssuerFromGatewayAnnotation(t *testing.T) {
 	t.Parallel()
 	helper := NewTestHelperWithGateways(WithAnnotations(map[string]string{
-		IssuerAnnotation: "testissuer",
+		v1beta1labels.IssuerAnnotation: "testissuer",
 	}))
 	assertCreateCertificateCalled(t, helper)
 	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
@@ -380,7 +381,7 @@ func TestGatewayReconcile_UpdatesCertificateWithDeletedHost(t *testing.T) {
 func TestGatewayReconcile_UpdatesCertificateWithNewIssuer(t *testing.T) {
 	t.Parallel()
 	helper := NewTestHelperWithCertificates(WithAnnotations(map[string]string{
-		IssuerAnnotation: "new",
+		v1beta1labels.IssuerAnnotation: "new",
 	}))
 	assertCertificateUpdated(t, helper)
 	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
@@ -405,7 +406,7 @@ func TestGatewayReconcile_UpdateCertificateNoOp(t *testing.T) {
 func TestGatewayReconcile_UpdatesCertificateDryRunWillNotCommit(t *testing.T) {
 	t.Parallel()
 	helper := NewTestHelperWithCertificates(WithTestDryRun(), WithAnnotations(map[string]string{
-		IssuerAnnotation: "achange",
+		v1beta1labels.IssuerAnnotation: "achange",
 	}))
 
 	updated := 0

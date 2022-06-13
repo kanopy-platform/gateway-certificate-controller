@@ -12,21 +12,18 @@ import (
 
 type Label string
 
-const (
-	InjectSimpleCredentialNameLabel Label = "istio-cert-controller-inject-simple-credential-name"
-	ManagedLabel                    Label = "istio-cert-controller-managed"
+var (
+	InjectSimpleCredentialNameLabel = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-inject-simple-credential-name")
+	IssuerAnnotation                = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-issuer")
+	ManagedLabel                    = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-managed")
 )
 
 func InjectSimpleCredentialNameLabelSelector() string {
-	return apilabels.Set(map[string]string{fmt.Sprintf("%s/%s", version.String(), string(InjectSimpleCredentialNameLabel)): "true"}).AsSelector().String()
-}
-
-func ManagedLabelString() string {
-	return fmt.Sprintf("%s/%s", version.String(), string(ManagedLabel))
+	return apilabels.Set(map[string]string{InjectSimpleCredentialNameLabel: "true"}).AsSelector().String()
 }
 
 func ManagedLabelSelector() string {
-	managedReq, err := apilabels.NewRequirement(ManagedLabelString(), selection.Exists, []string{})
+	managedReq, err := apilabels.NewRequirement(ManagedLabel, selection.Exists, []string{})
 	utilruntime.Must(err)
 
 	return apilabels.NewSelector().Add(*managedReq).String()

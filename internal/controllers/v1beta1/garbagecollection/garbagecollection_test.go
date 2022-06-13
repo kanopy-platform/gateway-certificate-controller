@@ -1,4 +1,4 @@
-package v1beta1
+package garbagecollection
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	v1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	certmanagerfake "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/fake"
 	"github.com/stretchr/testify/assert"
+	"istio.io/api/networking/v1beta1"
 	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,7 +31,7 @@ func TestNewGarbageCollectionController(t *testing.T) {
 		dryRun:            dryRun,
 	}
 
-	gc := NewGarbageCollectionController(certmanagerClient, istioClient).WithDryRun(dryRun)
+	gc := NewGarbageCollectionController(istioClient, certmanagerClient, WithDryRun(dryRun))
 	assert.Equal(t, want, gc)
 }
 
@@ -39,16 +40,46 @@ func TestGarbageCollectionControllerReconcile(t *testing.T) {
 
 	certificate := &v1.Certificate{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-cert",
+			Name:      "devops-gateway-123-cert",
 			Namespace: "routing",
-			Labels:    map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-managed": "test-gateway.test-ns"},
+			Labels:    map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-managed": "gateway-123.devops"},
 		},
 	}
 
-	gateway := &networkingv1beta1.Gateway{
+	gatewayWithCert := &networkingv1beta1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-gateway",
-			Namespace: "test-ns",
+			Name:      "gateway-123",
+			Namespace: "devops",
+		},
+		Spec: v1beta1.Gateway{
+			Servers: []*v1beta1.Server{
+				{
+					Tls: &v1beta1.ServerTLSSettings{
+						CredentialName: "devops-gateway-123-diff-cert",
+					},
+				},
+				{
+					Tls: &v1beta1.ServerTLSSettings{
+						CredentialName: "devops-gateway-123-cert", // should match certificate name
+					},
+				},
+			},
+		},
+	}
+
+	gatewayWithoutCert := &networkingv1beta1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "gateway-123",
+			Namespace: "devops",
+		},
+		Spec: v1beta1.Gateway{
+			Servers: []*v1beta1.Server{
+				{
+					Tls: &v1beta1.ServerTLSSettings{
+						CredentialName: "devops-gateway-123-diff-cert",
+					},
+				},
+			},
 		},
 	}
 
@@ -69,7 +100,7 @@ func TestGarbageCollectionControllerReconcile(t *testing.T) {
 		{
 			description:  "Certificate points to existing Gateway, no-op",
 			certs:        []*v1.Certificate{certificate},
-			gateways:     []*networkingv1beta1.Gateway{gateway},
+			gateways:     []*networkingv1beta1.Gateway{gatewayWithCert},
 			wantError:    false,
 			wantNumCerts: 1,
 		},
@@ -87,11 +118,18 @@ func TestGarbageCollectionControllerReconcile(t *testing.T) {
 			wantError:    true,
 			wantNumCerts: 0,
 		},
+		{
+			description:  "Gateway does not contain Certificate, delete Certificate",
+			certs:        []*v1.Certificate{certificate},
+			gateways:     []*networkingv1beta1.Gateway{gatewayWithoutCert},
+			wantError:    false,
+			wantNumCerts: 0,
+		},
 	}
 
 	for _, test := range tests {
 		// setup
-		gc := NewGarbageCollectionController(certmanagerfake.NewSimpleClientset(), istiofake.NewSimpleClientset())
+		gc := NewGarbageCollectionController(istiofake.NewSimpleClientset(), certmanagerfake.NewSimpleClientset())
 
 		for _, cert := range test.certs {
 			_, err := gc.certmanagerClient.CertmanagerV1().Certificates(cert.Namespace).Create(context.TODO(), cert, metav1.CreateOptions{})

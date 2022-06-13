@@ -1,4 +1,4 @@
-package v1beta1
+package garbagecollection
 
 import (
 	"context"
@@ -29,18 +29,18 @@ type GarbageCollectionController struct {
 	dryRun            bool
 }
 
-func NewGarbageCollectionController(certmanagerClient certmanagerversionedclient.Interface, istioClient istioversionedclient.Interface) *GarbageCollectionController {
+func NewGarbageCollectionController(istioClient istioversionedclient.Interface, certClient certmanagerversionedclient.Interface, opts ...OptionsFunc) *GarbageCollectionController {
 	gc := &GarbageCollectionController{
 		name:              "istio-garbage-collection-controller",
-		certmanagerClient: certmanagerClient,
+		certmanagerClient: certClient,
 		istioClient:       istioClient,
 	}
-	return gc
-}
 
-func (c *GarbageCollectionController) WithDryRun(dryRun bool) *GarbageCollectionController {
-	c.dryRun = dryRun
-	return c
+	for _, opt := range opts {
+		opt(gc)
+	}
+
+	return gc
 }
 
 func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr manager.Manager) error {
@@ -71,28 +71,50 @@ func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr 
 
 func (c *GarbageCollectionController) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	log := log.FromContext(ctx)
+	log.V(1).Info("Debug")
+	log.V(1).Info("Running Garbage Collection Reconcile", "request", request.String())
 
 	certIface := c.certmanagerClient.CertmanagerV1().Certificates(request.Namespace)
 	cert, err := certIface.Get(ctx, request.Name, metav1.GetOptions{})
 	if err != nil {
 		log.Error(err, "failed to Get Certificate")
-		return reconcile.Result{}, err
+		return reconcile.Result{}, err // don't requeue, garbage collection will run periodically
 	}
 
-	label := cert.Labels[v1beta1labels.ManagedLabelString()]
+	label := cert.Labels[v1beta1labels.ManagedLabel]
 	gatewayName, gatewayNamespace := v1beta1labels.ParseManagedLabel(label)
 
-	_, err = c.istioClient.NetworkingV1beta1().Gateways(gatewayNamespace).Get(ctx, gatewayName, metav1.GetOptions{})
+	deleteCert := false
+	deleteOptions := metav1.DeleteOptions{}
+	if c.dryRun {
+		deleteOptions.DryRun = []string{"All"}
+	}
+
+	gateway, err := c.istioClient.NetworkingV1beta1().Gateways(gatewayNamespace).Get(ctx, gatewayName, metav1.GetOptions{})
 	if k8serrors.IsNotFound(err) {
-		deleteOptions := metav1.DeleteOptions{}
-		if c.dryRun {
-			deleteOptions.DryRun = []string{"All"}
+		log.V(1).Info("Gateway not found, marking Certificate for deletion", "gateway-namespace", gatewayNamespace, "gateway", gatewayName)
+		deleteCert = true
+	} else {
+		foundMatch := false
+
+		for _, s := range gateway.Spec.Servers {
+			if s.Tls.CredentialName == request.Name {
+				foundMatch = true
+				break
+			}
 		}
 
-		log.Info(fmt.Sprintf("Gateway not found, deleting Certificate %s", request), "dry-run", c.dryRun)
+		if !foundMatch {
+			log.V(1).Info("Matching Tls.CredentialName not found, marking Certificate for deletion", "gateway-namespace", gatewayNamespace, "gateway", gatewayName)
+			deleteCert = true
+		}
+	}
+
+	if deleteCert {
+		log.Info(fmt.Sprintf("Deleting Certificate %s", request), "dry-run", c.dryRun)
 		if err := certIface.Delete(ctx, request.Name, deleteOptions); err != nil {
 			log.Error(err, "failed to Delete Certificate")
-			return reconcile.Result{}, err
+			return reconcile.Result{}, err // don't requeue, garbage collection will run periodically
 		}
 	}
 
