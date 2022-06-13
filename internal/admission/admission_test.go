@@ -38,6 +38,10 @@ func TestGatewayMutationHook(t *testing.T) {
 		Spec: networkingv1beta1.Gateway{
 			Servers: []*networkingv1beta1.Server{
 				{
+					Port: &networkingv1beta1.Port{
+						Number: 443,
+						Name:   "https",
+					},
 					Tls: &networkingv1beta1.ServerTLSSettings{
 						Mode:           networkingv1beta1.ServerTLSSettings_SIMPLE,
 						CredentialName: "should-be-replaced",
@@ -79,35 +83,35 @@ func TestGatewayMutationHook(t *testing.T) {
 
 func TestCredentialName(t *testing.T) {
 	t.Parallel()
-
+	const portName = "https"
 	tests := []struct {
-		description  string
-		namespace    string
-		name         string
-		wantContains string
-		wantLen      int
+		description string
+		namespace   string
+		name        string
+		want        string
+		wantLen     int
 	}{
 		{
-			description:  "generated credentialName within character limit",
-			namespace:    "devops",
-			name:         "example-gateway",
-			wantContains: "devops-example-gateway-",
-			wantLen:      33,
+			description: "generated credentialName within character limit",
+			namespace:   "devops",
+			name:        "example-gateway",
+			want:        fmt.Sprintf("devops-example-gateway-%s", portName),
+			wantLen:     28,
 		},
 		{
 			description: "generated credentialName is truncated",
 			namespace:   strings.Repeat("a", 125),
 			name:        strings.Repeat("b", 125),
 			// some characters from the end of name should be truncated
-			wantContains: fmt.Sprintf("%s-%s-", strings.Repeat("a", 125), strings.Repeat("b", 116)),
-			wantLen:      secretNameMaxLength,
+			want:    fmt.Sprintf("%s-%s-%s", strings.Repeat("a", 125), strings.Repeat("b", 121), portName),
+			wantLen: secretNameMaxLength,
 		},
 	}
 
 	for _, test := range tests {
-		n := credentialName(context.TODO(), test.namespace, test.name)
+		n := credentialName(context.TODO(), test.namespace, test.name, portName)
 
-		assert.Contains(t, n, test.wantContains, test.description)
+		assert.Equal(t, n, test.want, test.description)
 		assert.Equal(t, test.wantLen, len(n), test.description)
 	}
 }
@@ -117,22 +121,35 @@ func TestMutate(t *testing.T) {
 
 	gateway := v1beta1.Gateway{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      "example-gateway",
-			Namespace: "devops",
-			Labels:    map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"},
+			Name:        "example-gateway",
+			Namespace:   "devops",
+			Labels:      map[string]string{"v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"},
+			Annotations: map[string]string{},
 		},
 		Spec: networkingv1beta1.Gateway{
 			Servers: []*networkingv1beta1.Server{
 				{
 					Tls: nil,
+					Port: &networkingv1beta1.Port{
+						Number: 80,
+						Name:   "http",
+					},
 				},
 				{
+					Port: &networkingv1beta1.Port{
+						Number: 443,
+						Name:   "https",
+					},
 					Tls: &networkingv1beta1.ServerTLSSettings{
 						Mode:           networkingv1beta1.ServerTLSSettings_PASSTHROUGH,
 						CredentialName: "should-not-be-mutated",
 					},
 				},
 				{
+					Port: &networkingv1beta1.Port{
+						Number: 443,
+						Name:   "https",
+					},
 					Tls: &networkingv1beta1.ServerTLSSettings{
 						Mode:           networkingv1beta1.ServerTLSSettings_SIMPLE,
 						CredentialName: "should-be-mutated",

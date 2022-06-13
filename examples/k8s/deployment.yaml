@@ -38,6 +38,9 @@ spec:
       containers:
         - name: kanopy-gateway-cert-controller
           image: registry.example.com/kanopy-gateway-cert-controller:latest
+          args:
+            - "--certificate-namespace=routing"
+            - "--log-level=debug"
           imagePullPolicy: Always
           volumeMounts:
             - name: webhook-certs

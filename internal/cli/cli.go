@@ -16,8 +16,8 @@ import (
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	certmanagerversionedclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
-	"istio.io/pkg/log"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -53,6 +53,8 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().Int("webhook-listen-port", 8443, "Admission webhook listen port")
 	cmd.PersistentFlags().String("webhook-certs-dir", "/etc/webhook/certs", "Admission webhook TLS certificate directory")
 	cmd.PersistentFlags().Bool("dry-run", false, "Controller dry-run changes only")
+	cmd.PersistentFlags().String("certificate-namespace", "cert-manager", "Namespace that stores Certificates")
+	cmd.PersistentFlags().String("default-issuer", "selfsigned", "The default ClusterIssuer")
 
 	k8sFlags.AddFlags(cmd.PersistentFlags())
 	// no need to check err, this only checks if variadic args != 0
@@ -86,7 +88,7 @@ func (c *RootCommand) persistentPreRunE(cmd *cobra.Command, args []string) error
 func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	dryRun := viper.GetBool("dry-run")
 	if dryRun {
-		klog.Log.Info("running in dry-run mode.")
+		klog.Log.Info("running in dry-run mode")
 	}
 
 	cfg, err := c.k8sFlags.ToRESTConfig()
@@ -99,7 +101,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	certmanagerClient, err := certmanagerversionedclient.NewForConfig(cfg)
+	cmc, err := certmanagerversionedclient.NewForConfig(cfg)
 	if err != nil {
 		return err
 	}
@@ -119,7 +121,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	})
 
 	if err != nil {
-		log.Error(err, "unable to set up  controller manager")
+		klog.Log.Error(err, "unable to set up  controller manager")
 		return err
 	}
 
@@ -127,7 +129,11 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := v1beta1controllers.NewGatewayController(ic).SetupWithManager(ctx, mgr); err != nil {
+	if err := v1beta1controllers.NewGatewayController(ic, cmc,
+		v1beta1controllers.WithDryRun(viper.GetBool("dry-run")),
+		v1beta1controllers.WithDefaultClusterIssuer(viper.GetString("default-issuer")),
+		v1beta1controllers.WithCertificateNamespace(viper.GetString("certificate-namespace"))).
+		SetupWithManager(ctx, mgr); err != nil {
 		return err
 	}
 
