@@ -45,7 +45,8 @@ func NewGarbageCollectionController(istioClient istioversionedclient.Interface, 
 
 func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr manager.Manager) error {
 	ctrl, err := controller.New(c.name, mgr, controller.Options{
-		Reconciler: c,
+		Reconciler:  c,
+		RateLimiter: workqueue.NewItemExponentialFailureRateLimiter(time.Second, 1000*time.Second), // maxDelay is limited by the Informer defaultRsync interval
 	})
 	if err != nil {
 		return err
@@ -78,7 +79,9 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 	cert, err := certIface.Get(ctx, request.Name, metav1.GetOptions{})
 	if err != nil {
 		log.Error(err, "failed to Get Certificate")
-		return reconcile.Result{}, err // don't requeue, garbage collection will run periodically
+		return reconcile.Result{
+			Requeue: true,
+		}, err
 	}
 
 	label := cert.Labels[v1beta1labels.ManagedLabel]
@@ -114,7 +117,9 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 		log.Info(fmt.Sprintf("Deleting Certificate %s", request), "dry-run", c.dryRun)
 		if err := certIface.Delete(ctx, request.Name, deleteOptions); err != nil {
 			log.Error(err, "failed to Delete Certificate")
-			return reconcile.Result{}, err // don't requeue, garbage collection will run periodically
+			return reconcile.Result{
+				Requeue: true,
+			}, err
 		}
 	}
 

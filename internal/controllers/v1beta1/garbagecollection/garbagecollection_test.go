@@ -145,10 +145,11 @@ func TestGarbageCollectionControllerReconcile(t *testing.T) {
 
 		if test.wantError {
 			assert.Error(t, err, test.description)
+			assert.Equal(t, reconcile.Result{Requeue: true}, r)
 		} else {
 			assert.NoError(t, err, test.description)
+			assert.Equal(t, reconcile.Result{}, r)
 		}
-		assert.Equal(t, reconcile.Result{}, r)
 
 		certs, err := gc.certmanagerClient.CertmanagerV1().Certificates(certificate.Namespace).List(context.TODO(), metav1.ListOptions{})
 		assert.NoError(t, err, test.description)
