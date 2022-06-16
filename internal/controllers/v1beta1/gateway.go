@@ -121,9 +121,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 					Requeue: true,
 				}, err
 			}
-		}
-
-		if cert != nil {
+		} else {
 			log.V(1).Info("Found certificate", "server", s)
 			if err := c.certHandler.UpdateCertificate(ctx, cert.DeepCopy(), gateway, s); err != nil {
 				return reconcile.Result{
