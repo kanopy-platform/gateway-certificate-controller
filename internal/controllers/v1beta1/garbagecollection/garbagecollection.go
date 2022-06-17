@@ -8,6 +8,7 @@ import (
 	certmanagerversionedclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	certmanagerinformers "github.com/cert-manager/cert-manager/pkg/client/informers/externalversions"
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
+	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -72,7 +73,6 @@ func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr 
 
 func (c *GarbageCollectionController) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	log := log.FromContext(ctx)
-	log.V(1).Info("Debug")
 	log.V(1).Info("Running Garbage Collection Reconcile", "request", request.String())
 
 	certIface := c.certmanagerClient.CertmanagerV1().Certificates(request.Namespace)
@@ -84,8 +84,7 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 		}, err
 	}
 
-	label := cert.Labels[v1beta1labels.ManagedLabel]
-	gatewayName, gatewayNamespace := v1beta1labels.ParseManagedLabel(label)
+	gatewayName, gatewayNamespace := v1beta1labels.ParseManagedLabel(cert.Labels[v1beta1labels.ManagedLabel])
 
 	deleteCert := false
 	deleteOptions := metav1.DeleteOptions{}
@@ -97,20 +96,9 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 	if k8serrors.IsNotFound(err) {
 		log.V(1).Info("Gateway not found, marking Certificate for deletion", "gateway-namespace", gatewayNamespace, "gateway", gatewayName)
 		deleteCert = true
-	} else {
-		foundMatch := false
-
-		for _, s := range gateway.Spec.Servers {
-			if s.Tls.CredentialName == request.Name {
-				foundMatch = true
-				break
-			}
-		}
-
-		if !foundMatch {
-			log.V(1).Info("Matching Tls.CredentialName not found, marking Certificate for deletion", "gateway-namespace", gatewayNamespace, "gateway", gatewayName)
-			deleteCert = true
-		}
+	} else if !isCertificateInGatewaySpec(request.Name, gateway) {
+		log.V(1).Info("Matching Tls.CredentialName not found, marking Certificate for deletion", "gateway-namespace", gatewayNamespace, "gateway", gatewayName)
+		deleteCert = true
 	}
 
 	if deleteCert {
@@ -131,4 +119,13 @@ func updateFunc(e event.UpdateEvent, q workqueue.RateLimitingInterface) {
 		Name:      e.ObjectNew.GetName(),
 		Namespace: e.ObjectNew.GetNamespace(),
 	}})
+}
+
+func isCertificateInGatewaySpec(certificate string, gateway *networkingv1beta1.Gateway) bool {
+	for _, s := range gateway.Spec.Servers {
+		if s.Tls.CredentialName == certificate {
+			return true
+		}
+	}
+	return false
 }

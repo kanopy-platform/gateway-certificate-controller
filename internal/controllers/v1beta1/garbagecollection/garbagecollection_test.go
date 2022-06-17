@@ -190,3 +190,48 @@ func TestUpdateFunc(t *testing.T) {
 	req, _ = q.Get()
 	assert.Equal(t, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "routing", Name: "test-cert-2"}}, req)
 }
+
+func TestIsCertificateInGatewaySpec(t *testing.T) {
+	t.Parallel()
+
+	gateway := &networkingv1beta1.Gateway{
+		Spec: v1beta1.Gateway{
+			Servers: []*v1beta1.Server{
+				{
+					Tls: &v1beta1.ServerTLSSettings{
+						CredentialName: "some-other-cred",
+					},
+				},
+				{
+					Tls: &v1beta1.ServerTLSSettings{
+						CredentialName: "devops-gateway-123-https",
+					},
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		description string
+		certificate string
+		gateway     *networkingv1beta1.Gateway
+		want        bool
+	}{
+		{
+			description: "Certificate exists in Gateway spec",
+			certificate: "devops-gateway-123-https",
+			gateway:     gateway,
+			want:        true,
+		},
+		{
+			description: "Certificate does not exist in Gateway spec",
+			certificate: "no-match",
+			gateway:     gateway,
+			want:        false,
+		},
+	}
+
+	for _, test := range tests {
+		assert.Equal(t, test.want, isCertificateInGatewaySpec(test.certificate, test.gateway), test.description)
+	}
+}
