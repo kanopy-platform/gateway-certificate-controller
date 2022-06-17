@@ -8,6 +8,7 @@ import (
 
 	"github.com/kanopy-platform/gateway-certificate-controller/internal/admission"
 	v1beta1controllers "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1"
+	v1beta1gc "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1/garbagecollection"
 	logzap "github.com/kanopy-platform/gateway-certificate-controller/internal/log/zap"
 
 	"github.com/spf13/cobra"
@@ -132,6 +133,12 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		v1beta1controllers.WithDryRun(viper.GetBool("dry-run")),
 		v1beta1controllers.WithDefaultClusterIssuer(viper.GetString("default-issuer")),
 		v1beta1controllers.WithCertificateNamespace(viper.GetString("certificate-namespace"))).
+		SetupWithManager(ctx, mgr); err != nil {
+		return err
+	}
+
+	if err := v1beta1gc.NewGarbageCollectionController(ic, cmc,
+		v1beta1gc.WithDryRun(dryRun)).
 		SetupWithManager(ctx, mgr); err != nil {
 		return err
 	}

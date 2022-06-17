@@ -9,7 +9,6 @@ import (
 	"time"
 
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
-	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/version"
 
 	certmanagerclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	"istio.io/api/networking/v1beta1"
@@ -32,11 +31,6 @@ import (
 
 const (
 	FieldManager = "isto-cert-controller"
-)
-
-var (
-	IssuerAnnotation = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-issuer")
-	ManagedLabel     = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-managed")
 )
 
 type certificateHandler interface {
@@ -144,7 +138,7 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 	log := log.FromContext(ctx)
 	issuer := c.clusterIssuer
 
-	if i, ok := gateway.Annotations[IssuerAnnotation]; ok {
+	if i, ok := gateway.Annotations[v1beta1labels.IssuerAnnotation]; ok {
 		issuer = i
 	}
 
@@ -159,7 +153,7 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   server.Tls.CredentialName,
-			Labels: map[string]string{ManagedLabel: fmt.Sprintf("%s.%s", gateway.Name, gateway.Namespace)},
+			Labels: map[string]string{v1beta1labels.ManagedLabel: fmt.Sprintf("%s.%s", gateway.Name, gateway.Namespace)},
 		},
 		Spec: v1certmanager.CertificateSpec{
 			DNSNames:   getSortedHostsWithoutNamespace(server.Hosts),
@@ -219,7 +213,7 @@ func updateCertificateIssuer(ctx context.Context, cert *v1certmanager.Certificat
 	log := log.FromContext(ctx)
 	issuer := cert.Spec.IssuerRef.Name
 
-	if i, ok := gateway.Annotations[IssuerAnnotation]; ok {
+	if i, ok := gateway.Annotations[v1beta1labels.IssuerAnnotation]; ok {
 		log.V(1).Info("got issuer from annotation", "issuer", i)
 		issuer = i
 	}
