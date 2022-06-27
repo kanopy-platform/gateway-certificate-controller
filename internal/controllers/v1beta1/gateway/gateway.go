@@ -165,11 +165,12 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 			},
 		},
 	}
+	createOptions := metav1.CreateOptions{FieldManager: FieldManager}
 	if c.dryRun {
 		log.Info("[dryrun] create certificate", "cert", cert)
-		return nil
+		createOptions.DryRun = []string{metav1.DryRunAll}
 	}
-	_, err := c.certClient.CertmanagerV1().Certificates(c.certificateNamespace).Create(ctx, cert, metav1.CreateOptions{FieldManager: FieldManager})
+	_, err := c.certClient.CertmanagerV1().Certificates(c.certificateNamespace).Create(ctx, cert, createOptions)
 	return err
 }
 
@@ -195,11 +196,15 @@ func (c *GatewayController) UpdateCertificate(ctx context.Context, cert *v1certm
 
 	if updatedDNSNames || updatedIssuer {
 		log.V(1).Info("pre-update", "cert", cert)
+
+		updateOptions := metav1.UpdateOptions{FieldManager: FieldManager}
 		if c.dryRun {
+			fmt.Println("DRY RUN UPDATE ", cert)
 			log.Info("[dryrun] update certificate", "cert", cert)
-			return nil
+			updateOptions.DryRun = []string{metav1.DryRunAll}
 		}
-		_, err := c.certClient.CertmanagerV1().Certificates(c.certificateNamespace).Update(ctx, cert, metav1.UpdateOptions{FieldManager: FieldManager})
+
+		_, err := c.certClient.CertmanagerV1().Certificates(c.certificateNamespace).Update(ctx, cert, updateOptions)
 		if err != nil {
 			log.Error(err, "error on certificate update", "cert", cert)
 		}
