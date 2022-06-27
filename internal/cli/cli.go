@@ -7,8 +7,8 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 
 	"github.com/kanopy-platform/gateway-certificate-controller/internal/admission"
-	v1beta1controllers "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1"
 	v1beta1gc "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1/garbagecollection"
+	v1beta1controllers "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1/gateway"
 	logzap "github.com/kanopy-platform/gateway-certificate-controller/internal/log/zap"
 
 	"github.com/spf13/cobra"
