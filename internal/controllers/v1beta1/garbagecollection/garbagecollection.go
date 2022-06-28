@@ -89,7 +89,7 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 	deleteCert := false
 	deleteOptions := metav1.DeleteOptions{}
 	if c.dryRun {
-		deleteOptions.DryRun = []string{"All"}
+		deleteOptions.DryRun = []string{metav1.DryRunAll}
 	}
 
 	gateway, err := c.istioClient.NetworkingV1beta1().Gateways(gatewayNamespace).Get(ctx, gatewayName, metav1.GetOptions{})

@@ -402,31 +402,3 @@ func TestGatewayReconcile_UpdateCertificateNoOp(t *testing.T) {
 	assertCertificateUpdated(t, helper)
 	assert.Equal(t, 0, updated)
 }
-
-func TestGatewayReconcile_UpdatesCertificateDryRunWillNotCommit(t *testing.T) {
-	t.Parallel()
-	helper := NewTestHelperWithCertificates(WithTestDryRun(), WithAnnotations(map[string]string{
-		v1beta1labels.IssuerAnnotation: "achange",
-	}))
-
-	updated := 0
-	helper.CertClient.CertmanagerV1().(*certmanagerv1fake.FakeCertmanagerV1).PrependReactor("update", "certificates", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-		updated++
-		return true, nil, nil
-	})
-
-	assertCertificateUpdated(t, helper)
-	assert.Equal(t, 0, updated)
-}
-
-func TestGatewayReconcile_CreatCertificateWithDryRun(t *testing.T) {
-	t.Parallel()
-	helper := NewTestHelperWithGateways(WithTestDryRun())
-	created := 0
-	helper.CertClient.CertmanagerV1().(*certmanagerv1fake.FakeCertmanagerV1).PrependReactor("create", "certificates", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-		created++
-		return true, nil, nil
-	})
-	assertCreateCertificateCalled(t, helper)
-	assert.Equal(t, 0, created)
-}
