@@ -34,3 +34,5 @@ spec:
 ```
 
 The mutated object will contain the following `tls.credentialName=default-httpbin-gateway-https`.
+
+Since the `tls.credentialName` is used to name the `Certificate` and `Secret` resources it is subject to the [253 max character limit](https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-subdomain-names).  The `<namespace>-<gateway-name>` will be truncated accordingly to preserve the `portName`
