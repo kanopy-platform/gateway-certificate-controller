@@ -4,7 +4,7 @@ This service runs a mutating webhook on `/mutate`.
 
 ## Mutation Logic
 
-- Given a Gateway [labeled](./api/v1beta1.md)
+- Given a Gateway [labeled](./api/v1beta1.md) for management by the controller.
 - Inspect each Server entry.
 - For each server that sets `tls.mode = SIMPLE` construct a `tls.credentialName` using the following format: `<namespace>-<gateway name>-<port-name>`
 

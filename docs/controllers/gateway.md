@@ -6,10 +6,10 @@ The purpose of the controller is to watch [labeled](../api/v1beta1.md) Gateway r
 
 ## Controller Reconcile Logic
 
-- Given a Gateway [labeled](../api/v1beta1.md)
+- Given a Gateway [labeled](../api/v1beta1.md) for management by the controller.
 - Inspect each Server entry and check if a Certificate exists.
 - If not exists, Create the Certificate if `tls.Mode = SIMPLE`
-- If exits, Update the Certificate with the server's hosts slice.
+- If exists, Update the Certificate with the server's hosts slice.
 
 For example:
 

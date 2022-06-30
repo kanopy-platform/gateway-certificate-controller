@@ -9,7 +9,7 @@ labels:
     "v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"
 ```
 
-When this label is set the controller will take over the TLS.CredentialName and install a certificate according to the default issuer set during (Installation)[../installation.md]
+When this label is set the controller will take over the TLS.CredentialName and install a certificate according to the default issuer set during [Installation](../installation.md)
 
 A custom [ClusterIssuers](https://pkg.go.dev/github.com/jetstack/cert-manager/pkg/apis/certmanager/v1#ClusterIssuer) installed in your kubernetes cluster may be used per gateway with the annotation:
 
