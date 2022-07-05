@@ -67,7 +67,7 @@ func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr 
 		return err
 	}
 
-	prometheus.Metrics.PollManagedCertificatesCount(certmanagerInformerFactory.Certmanager().V1().Certificates().Lister())
+	prometheus.PollManagedCertificatesCount(certmanagerInformerFactory.Certmanager().V1().Certificates().Lister())
 	certmanagerInformerFactory.Start(ctx.Done())
 
 	return nil

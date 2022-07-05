@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kanopy-platform/gateway-certificate-controller/internal/prometheus"
 	"github.com/stretchr/testify/assert"
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
 	"istio.io/client-go/pkg/apis/networking/v1beta1"
@@ -22,7 +21,7 @@ import (
 func TestGatewayMutationHook(t *testing.T) {
 	t.Parallel()
 
-	gmh := NewGatewayMutationHook(istiofake.NewSimpleClientset(), prometheus.New())
+	gmh := NewGatewayMutationHook(istiofake.NewSimpleClientset())
 
 	scheme := runtime.NewScheme()
 	utilruntime.Must(v1beta1.SchemeBuilder.AddToScheme(scheme))

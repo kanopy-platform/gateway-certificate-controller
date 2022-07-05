@@ -24,14 +24,11 @@ const (
 type GatewayMutationHook struct {
 	istioClient istioversionedclient.Interface
 	decoder     *admission.Decoder
-	//prom        *prometheus.Prometheus
 }
 
-//func NewGatewayMutationHook(client istioversionedclient.Interface, p *prometheus.Prometheus) *GatewayMutationHook {
 func NewGatewayMutationHook(client istioversionedclient.Interface) *GatewayMutationHook {
 	gmh := &GatewayMutationHook{
 		istioClient: client,
-		//prom:        p,
 	}
 	return gmh
 }
@@ -46,7 +43,7 @@ func (g *GatewayMutationHook) Handle(ctx context.Context, req admission.Request)
 	res := g.handle(ctx, req)
 
 	duration := time.Since(start)
-	go prometheus.Metrics.UpdateMutationWebhookLatency(duration.Seconds())
+	prometheus.UpdateMutationWebhookLatency(duration.Seconds())
 	return res
 }
 
