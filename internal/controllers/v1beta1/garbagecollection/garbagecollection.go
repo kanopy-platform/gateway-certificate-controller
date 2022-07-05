@@ -7,6 +7,7 @@ import (
 
 	certmanagerversionedclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	certmanagerinformers "github.com/cert-manager/cert-manager/pkg/client/informers/externalversions"
+	"github.com/kanopy-platform/gateway-certificate-controller/internal/prometheus"
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
 	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
@@ -66,6 +67,7 @@ func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr 
 		return err
 	}
 
+	prometheus.Metrics.PollManagedCertificatesCount(certmanagerInformerFactory.Certmanager().V1().Certificates().Lister())
 	certmanagerInformerFactory.Start(ctx.Done())
 
 	return nil

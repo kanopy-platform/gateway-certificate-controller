@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/kanopy-platform/gateway-certificate-controller/internal/prometheus"
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
 	"istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
@@ -22,11 +24,14 @@ const (
 type GatewayMutationHook struct {
 	istioClient istioversionedclient.Interface
 	decoder     *admission.Decoder
+	//prom        *prometheus.Prometheus
 }
 
+//func NewGatewayMutationHook(client istioversionedclient.Interface, p *prometheus.Prometheus) *GatewayMutationHook {
 func NewGatewayMutationHook(client istioversionedclient.Interface) *GatewayMutationHook {
 	gmh := &GatewayMutationHook{
 		istioClient: client,
+		//prom:        p,
 	}
 	return gmh
 }
@@ -36,6 +41,16 @@ func (g *GatewayMutationHook) SetupWithManager(mgr manager.Manager) {
 }
 
 func (g *GatewayMutationHook) Handle(ctx context.Context, req admission.Request) admission.Response {
+	start := time.Now()
+
+	res := g.handle(ctx, req)
+
+	duration := time.Since(start)
+	go prometheus.Metrics.UpdateMutationWebhookLatency(duration.Seconds())
+	return res
+}
+
+func (g *GatewayMutationHook) handle(ctx context.Context, req admission.Request) admission.Response {
 	log := log.FromContext(ctx)
 
 	gateway := &v1beta1.Gateway{}

@@ -110,6 +110,8 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 
 	ctx := signals.SetupSignalHandler()
 
+	//metrics := prometheus.New()
+
 	mgr, err := manager.New(cfg, manager.Options{
 		Scheme:                 scheme,
 		Host:                   "0.0.0.0",
@@ -145,6 +147,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	//admission.NewGatewayMutationHook(ic, metrics).SetupWithManager(mgr)
 	admission.NewGatewayMutationHook(ic).SetupWithManager(mgr)
 
 	return mgr.Start(ctx)
