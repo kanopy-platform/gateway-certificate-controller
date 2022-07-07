@@ -13,8 +13,8 @@ metadata:
 spec:
   secretName: kanopy-gateway-cert-controller
   dnsNames:
-    - kanopy-gateway-cert-controller.devops.svc
-    - kanopy-gateway-cert-controller.devops.svc.cluster.local
+    - kanopy-gateway-cert-controller.routing.svc
+    - kanopy-gateway-cert-controller.routing.svc.cluster.local
   issuerRef:
     name: kanopy-gateway-cert-controller-selfsigned
   
@@ -104,7 +104,7 @@ metadata:
   creationTimestamp: null
   name: kanopy-gateway-cert-controller
   annotations:
-    cert-manager.io/inject-ca-from: devops/kanopy-gateway-cert-controller
+    cert-manager.io/inject-ca-from: routing/kanopy-gateway-cert-controller
 webhooks:
 - clientConfig:
     caBundle: Cg==
@@ -112,7 +112,7 @@ webhooks:
       name: kanopy-gateway-cert-controller
       path: /mutate
       port: 8443
-      namespace: "devops"
+      namespace: "routing"
   sideEffects: None
   admissionReviewVersions: ["v1beta1"]
   failurePolicy: Ignore
