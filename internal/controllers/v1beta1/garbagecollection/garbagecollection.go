@@ -29,6 +29,7 @@ type GarbageCollectionController struct {
 	certmanagerClient certmanagerversionedclient.Interface
 	istioClient       istioversionedclient.Interface
 	dryRun            bool
+	managedCerts      map[string]bool
 }
 
 func NewGarbageCollectionController(istioClient istioversionedclient.Interface, certClient certmanagerversionedclient.Interface, opts ...OptionsFunc) *GarbageCollectionController {
@@ -36,6 +37,7 @@ func NewGarbageCollectionController(istioClient istioversionedclient.Interface, 
 		name:              "istio-garbage-collection-controller",
 		certmanagerClient: certClient,
 		istioClient:       istioClient,
+		managedCerts:      make(map[string]bool),
 	}
 
 	for _, opt := range opts {
@@ -67,7 +69,6 @@ func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr 
 		return err
 	}
 
-	prometheus.PollManagedCertificatesCount(certmanagerInformerFactory.Certmanager().V1().Certificates().Lister())
 	certmanagerInformerFactory.Start(ctx.Done())
 
 	return nil
@@ -77,13 +78,11 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 	log := log.FromContext(ctx)
 	log.V(1).Info("Running Garbage Collection Reconcile", "request", request.String())
 
+	c.managedCerts[request.String()] = true
+
 	certIface := c.certmanagerClient.CertmanagerV1().Certificates(request.Namespace)
 	cert, err := certIface.Get(ctx, request.Name, metav1.GetOptions{})
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return reconcile.Result{}, nil
-		}
-
 		log.Error(err, "failed to Get Certificate")
 		return reconcile.Result{
 			Requeue: true,
@@ -114,9 +113,12 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 			return reconcile.Result{
 				Requeue: true,
 			}, err
+		} else {
+			delete(c.managedCerts, request.String())
 		}
 	}
 
+	prometheus.UpdateManagedCertificatesCount(len(c.managedCerts))
 	return reconcile.Result{}, nil
 }
 
