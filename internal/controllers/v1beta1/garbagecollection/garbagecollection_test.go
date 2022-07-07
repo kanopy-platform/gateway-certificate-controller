@@ -29,6 +29,7 @@ func TestNewGarbageCollectionController(t *testing.T) {
 		certmanagerClient: certmanagerClient,
 		istioClient:       istioClient,
 		dryRun:            dryRun,
+		managedCerts:      map[string]bool{},
 	}
 
 	gc := NewGarbageCollectionController(istioClient, certmanagerClient, WithDryRun(dryRun))

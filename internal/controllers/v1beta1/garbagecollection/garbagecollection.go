@@ -7,6 +7,7 @@ import (
 
 	certmanagerversionedclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	certmanagerinformers "github.com/cert-manager/cert-manager/pkg/client/informers/externalversions"
+	"github.com/kanopy-platform/gateway-certificate-controller/internal/prometheus"
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
 	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
@@ -28,6 +29,7 @@ type GarbageCollectionController struct {
 	certmanagerClient certmanagerversionedclient.Interface
 	istioClient       istioversionedclient.Interface
 	dryRun            bool
+	managedCerts      map[string]bool
 }
 
 func NewGarbageCollectionController(istioClient istioversionedclient.Interface, certClient certmanagerversionedclient.Interface, opts ...OptionsFunc) *GarbageCollectionController {
@@ -35,6 +37,7 @@ func NewGarbageCollectionController(istioClient istioversionedclient.Interface, 
 		name:              "istio-garbage-collection-controller",
 		certmanagerClient: certClient,
 		istioClient:       istioClient,
+		managedCerts:      make(map[string]bool),
 	}
 
 	for _, opt := range opts {
@@ -75,6 +78,8 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 	log := log.FromContext(ctx)
 	log.V(1).Info("Running Garbage Collection Reconcile", "request", request.String())
 
+	c.managedCerts[request.String()] = true
+
 	certIface := c.certmanagerClient.CertmanagerV1().Certificates(request.Namespace)
 	cert, err := certIface.Get(ctx, request.Name, metav1.GetOptions{})
 	if err != nil {
@@ -109,8 +114,11 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 				Requeue: true,
 			}, err
 		}
+
+		delete(c.managedCerts, request.String())
 	}
 
+	prometheus.UpdateManagedCertificatesCount(len(c.managedCerts))
 	return reconcile.Result{}, nil
 }
 
