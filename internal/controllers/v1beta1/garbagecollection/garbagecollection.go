@@ -113,9 +113,9 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 			return reconcile.Result{
 				Requeue: true,
 			}, err
-		} else {
-			delete(c.managedCerts, request.String())
 		}
+
+		delete(c.managedCerts, request.String())
 	}
 
 	prometheus.UpdateManagedCertificatesCount(len(c.managedCerts))
