@@ -80,6 +80,10 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 	certIface := c.certmanagerClient.CertmanagerV1().Certificates(request.Namespace)
 	cert, err := certIface.Get(ctx, request.Name, metav1.GetOptions{})
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return reconcile.Result{}, nil
+		}
+
 		log.Error(err, "failed to Get Certificate")
 		return reconcile.Result{
 			Requeue: true,
