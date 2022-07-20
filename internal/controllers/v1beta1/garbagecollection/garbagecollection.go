@@ -131,7 +131,7 @@ func updateFunc(e event.UpdateEvent, q workqueue.RateLimitingInterface) {
 
 func isCertificateInGatewaySpec(certificate string, gateway *networkingv1beta1.Gateway) bool {
 	for _, s := range gateway.Spec.Servers {
-		if s.Tls.CredentialName == certificate {
+		if s.Tls != nil && s.Tls.CredentialName == certificate {
 			return true
 		}
 	}

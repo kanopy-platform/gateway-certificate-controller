@@ -208,6 +208,9 @@ func TestIsCertificateInGatewaySpec(t *testing.T) {
 						CredentialName: "devops-gateway-123-https",
 					},
 				},
+				{
+					Tls: nil,
+				},
 			},
 		},
 	}
