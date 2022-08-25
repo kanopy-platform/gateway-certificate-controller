@@ -3,9 +3,13 @@ package cli
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+	// import oidc auth
+	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
+	"k8s.io/client-go/tools/cache"
 
 	"github.com/kanopy-platform/gateway-certificate-controller/internal/admission"
 	v1beta1gc "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1/garbagecollection"
@@ -21,6 +25,8 @@ import (
 	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
+	k8sinformers "k8s.io/client-go/informers"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	klog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -35,10 +41,12 @@ func init() {
 	utilruntime.Must(certmanagerv1.SchemeBuilder.AddToScheme(scheme))
 }
 
+//RootCommand is the origin of all command life
 type RootCommand struct {
 	k8sFlags *genericclioptions.ConfigFlags
 }
 
+//NewRootCommand seeds the new life of a root command
 func NewRootCommand() *cobra.Command {
 	k8sFlags := genericclioptions.NewConfigFlags(true)
 
@@ -54,6 +62,8 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().Int("webhook-listen-port", 8443, "Admission webhook listen port")
 	cmd.PersistentFlags().Int("metrics-listen-port", 8081, "Admission webhook listen port")
 	cmd.PersistentFlags().String("webhook-certs-dir", "/etc/webhook/certs", "Admission webhook TLS certificate directory")
+	cmd.PersistentFlags().Bool("external-dns", false, "Enable external-dns support")
+	cmd.PersistentFlags().String("external-dns-target", "", "Target to use for the external-dns target annotation value, implies --external-dns")
 	cmd.PersistentFlags().Bool("dry-run", false, "Controller dry-run changes only")
 	cmd.PersistentFlags().String("certificate-namespace", "cert-manager", "Namespace that stores Certificates")
 	cmd.PersistentFlags().String("default-issuer", "selfsigned", "The default ClusterIssuer")
@@ -108,6 +118,22 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return err
+	}
+
+	k8sInformerFactory := k8sinformers.NewSharedInformerFactoryWithOptions(clientset, time.Second*30)
+	nsInformer := k8sInformerFactory.Core().V1().Namespaces()
+
+	//need at least one listener func to populate the in memory cache
+	nsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(new interface{}) {},
+	})
+
+	k8sInformerFactory.Start(wait.NeverStop)
+	k8sInformerFactory.WaitForCacheSync(wait.NeverStop)
+
 	ctx := signals.SetupSignalHandler()
 
 	mgr, err := manager.New(cfg, manager.Options{
@@ -145,7 +171,18 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	admission.NewGatewayMutationHook(ic).SetupWithManager(mgr)
+	externalDNSTarget := viper.GetString("external-dns-target")
+	externalDNS := viper.GetBool("external-dns")
+
+	if externalDNSTarget != "" {
+		externalDNS = true
+	}
+
+	admission.NewGatewayMutationHook(
+		ic,
+		admission.WithExternalDNSTarget(externalDNSTarget),
+		admission.SetExternalDNS(externalDNS),
+		admission.WithNSLister(nsInformer.Lister())).SetupWithManager(mgr)
 
 	return mgr.Start(ctx)
 }

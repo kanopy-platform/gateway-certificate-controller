@@ -105,6 +105,11 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 		}, err
 	}
 
+	//If we don't have the tls management label or it isn't set to true return
+	if val, ok := gateway.Labels[v1beta1labels.InjectSimpleCredentialNameLabel]; !ok || val != "true" {
+		return reconcile.Result{}, nil
+	}
+
 	for _, s := range gateway.Spec.Servers {
 		log.V(1).Info("Inspecting server", "hosts", s.Hosts)
 
