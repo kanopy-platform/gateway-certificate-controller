@@ -62,9 +62,12 @@ func (g *GatewayMutationHook) Handle(ctx context.Context, req admission.Request)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	ns, err := g.nsLister.Get(gateway.Namespace)
-	if err != nil {
-		log.Error(err, fmt.Sprintf("failed to get namespace: %s", gateway.Namespace))
+	var ns *corev1.Namespace
+	if g.externalDNS.enabled {
+		ns, err = g.nsLister.Get(gateway.Namespace)
+		if err != nil {
+			log.Error(err, fmt.Sprintf("failed to get namespace: %s", gateway.Namespace))
+		}
 	}
 	gateway = mutate(ctx, gateway.DeepCopy(), g.externalDNS, ns)
 

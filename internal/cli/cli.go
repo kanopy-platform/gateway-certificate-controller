@@ -27,6 +27,8 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	k8sinformers "k8s.io/client-go/informers"
+	corev1informers "k8s.io/client-go/informers/core/v1"
+	corev1listers "k8s.io/client-go/listers/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	klog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -118,22 +120,6 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	clientset, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return err
-	}
-
-	k8sInformerFactory := k8sinformers.NewSharedInformerFactoryWithOptions(clientset, time.Second*30)
-	nsInformer := k8sInformerFactory.Core().V1().Namespaces()
-
-	//need at least one listener func to populate the in memory cache
-	nsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(new interface{}) {},
-	})
-
-	k8sInformerFactory.Start(wait.NeverStop)
-	k8sInformerFactory.WaitForCacheSync(wait.NeverStop)
-
 	ctx := signals.SetupSignalHandler()
 
 	mgr, err := manager.New(cfg, manager.Options{
@@ -178,9 +164,32 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		externalDNS = true
 	}
 
+	var clientset *kubernetes.Clientset
+	var k8sInformerFactory k8sinformers.SharedInformerFactory
+	var nsInformer corev1informers.NamespaceInformer
+	var nsl corev1listers.NamespaceLister
+	if externalDNS {
+		clientset, err = kubernetes.NewForConfig(cfg)
+		if err != nil {
+			return err
+		}
+
+		k8sInformerFactory = k8sinformers.NewSharedInformerFactoryWithOptions(clientset, time.Second*30)
+		nsInformer = k8sInformerFactory.Core().V1().Namespaces()
+
+		//need at least one listener func to populate the in memory cache
+		nsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(new interface{}) {},
+		})
+
+		k8sInformerFactory.Start(wait.NeverStop)
+		k8sInformerFactory.WaitForCacheSync(wait.NeverStop)
+		nsl = nsInformer.Lister()
+	}
+
 	admission.NewGatewayMutationHook(
 		ic,
-		nsInformer.Lister(),
+		nsl,
 		admission.WithExternalDNSTarget(externalDNSTarget),
 		admission.SetExternalDNS(externalDNS)).SetupWithManager(mgr)
 
