@@ -34,9 +34,10 @@ type externalDNSConfig struct {
 	target  string
 }
 
-func NewGatewayMutationHook(client istioversionedclient.Interface, opts ...OptionsFunc) *GatewayMutationHook {
+func NewGatewayMutationHook(client istioversionedclient.Interface, nsl corev1listers.NamespaceLister, opts ...OptionsFunc) *GatewayMutationHook {
 	gmh := &GatewayMutationHook{
 		istioClient: client,
+		nsLister:    nsl,
 	}
 
 	for _, opt := range opts {
@@ -103,7 +104,7 @@ func mutate(ctx context.Context, gateway *v1beta1.Gateway, externalDNS *external
 	}
 
 	//If we don't have the tls management label or it isn't set to true return
-	if val, ok := gateway.Labels[v1beta1labels.InjectSimpleCredentialNameLabel]; !ok || val != "true" {
+	if val, ok := gateway.Labels[v1beta1labels.InjectSimpleCredentialNameLabel]; ok && val == "true" {
 		for _, s := range gateway.Spec.Servers {
 			if s.Tls == nil {
 				continue
@@ -127,7 +128,7 @@ func mutateExternalDNSAnnotations(ctx context.Context, gateway *v1beta1.Gateway,
 	}
 
 	// if any host ingress is allowed in the namespace, do no mutation and return
-	if allowed, ok := ns.Labels[v1beta1labels.IngressAllowListLabel]; ok && allowed == "*" {
+	if allowed, ok := ns.Annotations[v1beta1labels.IngressAllowListLabel]; ok && allowed == "*" {
 		return
 	}
 
@@ -138,6 +139,6 @@ func mutateExternalDNSAnnotations(ctx context.Context, gateway *v1beta1.Gateway,
 	if target != "" {
 		gateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey] = target
 	} else {
-		delete(gateway.Annotations, v1beta1labels.ExternalDNSHostnameAnnotationKey)
+		delete(gateway.Annotations, v1beta1labels.ExternalDNSTargetAnnotationKey)
 	}
 }

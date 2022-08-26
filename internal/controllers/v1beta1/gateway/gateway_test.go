@@ -111,6 +111,7 @@ func NewGatewayOptions(opts ...func(*GatewayOptions)) *GatewayOptions {
 	gopts := &GatewayOptions{
 		Hosts:          append(namespacedHosts("test2.example.com"), "test1.example.com"),
 		CredentialName: TestCertificateName,
+		Labels:         map[string]string{v1beta1labels.InjectSimpleCredentialNameLabel: "true"},
 	}
 
 	for _, o := range opts {
@@ -401,4 +402,14 @@ func TestGatewayReconcile_UpdateCertificateNoOp(t *testing.T) {
 
 	assertCertificateUpdated(t, helper)
 	assert.Equal(t, 0, updated)
+}
+
+func TestGatewayReconcile_SkipGatewayWithoutLabel(t *testing.T) {
+	t.Parallel()
+	helper := NewTestHelperWithGateways(WithLabels(map[string]string{}))
+
+	assert.Equal(t, 0, helper.Controller.CreateCalled)
+	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
+	assert.Error(t, err)
+	assert.Nil(t, cert)
 }

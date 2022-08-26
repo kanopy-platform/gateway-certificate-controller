@@ -180,9 +180,9 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 
 	admission.NewGatewayMutationHook(
 		ic,
+		nsInformer.Lister(),
 		admission.WithExternalDNSTarget(externalDNSTarget),
-		admission.SetExternalDNS(externalDNS),
-		admission.WithNSLister(nsInformer.Lister())).SetupWithManager(mgr)
+		admission.SetExternalDNS(externalDNS)).SetupWithManager(mgr)
 
 	return mgr.Start(ctx)
 }

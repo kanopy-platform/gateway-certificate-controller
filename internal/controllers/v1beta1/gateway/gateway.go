@@ -73,9 +73,7 @@ func (c *GatewayController) SetupWithManager(ctx context.Context, mgr manager.Ma
 		return err
 	}
 
-	istioInformerFactory := istioinformers.NewSharedInformerFactoryWithOptions(c.istioClient, time.Second*30, istioinformers.WithTweakListOptions(func(listOptions *metav1.ListOptions) {
-		listOptions.LabelSelector = v1beta1labels.InjectSimpleCredentialNameLabelSelector()
-	}))
+	istioInformerFactory := istioinformers.NewSharedInformerFactoryWithOptions(c.istioClient, time.Second*30)
 
 	if err := ctrl.Watch(&source.Informer{Informer: istioInformerFactory.Networking().V1beta1().Gateways().Informer()},
 		&handler.EnqueueRequestForObject{}); err != nil {
