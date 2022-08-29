@@ -65,7 +65,8 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().Int("metrics-listen-port", 8081, "Admission webhook listen port")
 	cmd.PersistentFlags().String("webhook-certs-dir", "/etc/webhook/certs", "Admission webhook TLS certificate directory")
 	cmd.PersistentFlags().Bool("external-dns", false, "Enable external-dns support")
-	cmd.PersistentFlags().String("external-dns-target", "", "Target to use for the external-dns target annotation value, implies --external-dns")
+	cmd.PersistentFlags().String("external-dns-target", "", "Target to use for the external-dns target annotation value, implies --external-dns, default disabled")
+	cmd.PersistentFlags().String("external-dns-selector", "", "Valid label selector string to use for excluding namespace from butation, implies --external-dns")
 	cmd.PersistentFlags().Bool("dry-run", false, "Controller dry-run changes only")
 	cmd.PersistentFlags().String("certificate-namespace", "cert-manager", "Namespace that stores Certificates")
 	cmd.PersistentFlags().String("default-issuer", "selfsigned", "The default ClusterIssuer")
@@ -157,18 +158,35 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	edc := admission.NewExternalDNSConfig()
 	externalDNSTarget := viper.GetString("external-dns-target")
-	externalDNS := viper.GetBool("external-dns")
+	externalDNSSelector := viper.GetString("external-dns-selector")
+
+	//externalDNS settings are enabled with defaults via --external-dns or implictly by overriding defaults
+	//with either flag
+	externalDNSEnabled := viper.GetBool("external-dns")
+	if externalDNSTarget != "" || externalDNSSelector != "" {
+		externalDNSEnabled = true
+	}
 
 	if externalDNSTarget != "" {
-		externalDNS = true
+		edc.SetTarget(externalDNSTarget)
 	}
+
+	if externalDNSSelector != "" {
+		err := edc.SetSelector(externalDNSSelector)
+		if err != nil {
+			return err
+		}
+	}
+
+	edc.SetEnabled(externalDNSEnabled)
 
 	var clientset *kubernetes.Clientset
 	var k8sInformerFactory k8sinformers.SharedInformerFactory
 	var nsInformer corev1informers.NamespaceInformer
 	var nsl corev1listers.NamespaceLister
-	if externalDNS {
+	if externalDNSEnabled {
 		clientset, err = kubernetes.NewForConfig(cfg)
 		if err != nil {
 			return err
@@ -190,8 +208,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	admission.NewGatewayMutationHook(
 		ic,
 		nsl,
-		admission.WithExternalDNSTarget(externalDNSTarget),
-		admission.SetExternalDNS(externalDNS)).SetupWithManager(mgr)
+		admission.WithExternalDNSConfig(edc)).SetupWithManager(mgr)
 
 	return mgr.Start(ctx)
 }
