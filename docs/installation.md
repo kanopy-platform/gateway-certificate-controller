@@ -23,6 +23,9 @@ Flags:
       --context string                 The name of the kubeconfig context to use
       --default-issuer string          The default ClusterIssuer (default "selfsigned")
       --dry-run                        Controller dry-run changes only
+      --external-dns                   Enable external-dns mutation support, default: disabled
+      --external-dns-target            Set or delete value for the external-dns target annotation, implies --external-dns, default: delete
+      --external-dns-selector          Annotation key=value selector string to use for excluding namespace from mutation, implies --external-dns, default: ingress-whitelist=*
   -h, --help                           help for kanopy-gateway-cert-controller
       --insecure-skip-tls-verify       If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure
       --kubeconfig string              Path to the kubeconfig file to use for CLI requests.
@@ -44,6 +47,9 @@ As provided within the [example rbac](../examples/k8s/rolebindings.yaml) this co
 - Ability to watch/list/get/update/patch Gateways in all namespaces
 - Full access to manage certificates within the `--certificate-namespace`
 - Ability to create [leases](https://kubernetes.io/docs/reference/kubernetes-api/cluster-resources/lease-v1/) which the controller uses to manage leader election
+
+External-DNS mutatios requires:
+- get/list/watch all namespace objects
 
 ## Metrics
 
