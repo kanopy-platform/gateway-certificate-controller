@@ -210,10 +210,9 @@ func TestMutate(t *testing.T) {
 		},
 	}
 
-	eDNS := externalDNSConfig{
-		enabled: true,
-		target:  "vanity-target",
-	}
+	eDNS := NewExternalDNSConfig()
+	eDNS.SetEnabled(true)
+	eDNS.SetTarget("vanity-target")
 
 	ns := corev1.Namespace{
 		ObjectMeta: v1.ObjectMeta{
@@ -222,7 +221,7 @@ func TestMutate(t *testing.T) {
 		},
 	}
 
-	mutatedGateway := mutate(context.TODO(), gateway.DeepCopy(), &eDNS, &ns)
+	mutatedGateway := mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 
 	assert.Equal(t, gateway.Spec.Servers[0], mutatedGateway.Spec.Servers[0])
 	assert.Equal(t, gateway.Spec.Servers[1], mutatedGateway.Spec.Servers[1])
@@ -242,7 +241,7 @@ func TestMutate(t *testing.T) {
 		},
 	}
 
-	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), &eDNS, &ns)
+	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 	assert.NotNil(t, mutatedGateway.Annotations)
 	assert.Equal(t, "more,hosts", mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey])
 	assert.Equal(t, "there", gateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
@@ -256,7 +255,7 @@ func TestMutate(t *testing.T) {
 	}
 
 	gateway.Labels = map[string]string{}
-	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), &eDNS, &ns)
+	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 	assert.NotNil(t, mutatedGateway.Annotations)
 	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
 	assert.False(t, found)
@@ -264,11 +263,41 @@ func TestMutate(t *testing.T) {
 	assert.Equal(t, gateway.Spec.Servers[2].Tls.CredentialName, mutatedGateway.Spec.Servers[2].Tls.CredentialName)
 
 	// ensure we remove the target annotation if no target is set
-	eDNS = externalDNSConfig{
-		enabled: true,
-	}
-	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), &eDNS, &ns)
+	eDNS = NewExternalDNSConfig()
+	eDNS.SetEnabled(true)
+
+	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 	assert.NotNil(t, mutatedGateway.Annotations)
 	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey]
 	assert.False(t, found)
+
+	// Ensure we don't mutate external dns annotations with custom annotations selectors
+	ns = corev1.Namespace{
+		ObjectMeta: v1.ObjectMeta{
+			Annotations: map[string]string{"testkey": "testvalue"},
+			Name:        "devops",
+		},
+	}
+	eDNS = NewExternalDNSConfig()
+	eDNS.SetEnabled(true)
+	eDNS.SetTarget("vanity-target")
+	assert.NoError(t, eDNS.SetSelector("testkey=testvalue"))
+
+	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	assert.NotNil(t, mutatedGateway.Annotations)
+	assert.Equal(t, "more,hosts", mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey])
+	assert.Equal(t, "there", gateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
+
+	// Ensure we do mutate external dns annotations without custom annotations selectors
+	ns = corev1.Namespace{
+		ObjectMeta: v1.ObjectMeta{
+			Annotations: map[string]string{"ingress-whitelist": "*"},
+			Name:        "devops",
+		},
+	}
+	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	assert.NotNil(t, mutatedGateway.Annotations)
+	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
+	assert.False(t, found)
+	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
 }
