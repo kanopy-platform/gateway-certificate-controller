@@ -26,7 +26,9 @@ const (
 	ExternalDNSTargetAnnotationKey = "external-dns.alpha.kubernetes.io/target"
 
 	//IngressAllowListLabel the
-	IngressAllowListLabel = "ingress-whitelist"
+	DefaultGatewayAllowListLabel = "ingress-whitelist"
+
+	DefaultGatewayAllowListLabelOverrideValue = "*"
 )
 
 func InjectSimpleCredentialNameLabelSelector() string {
