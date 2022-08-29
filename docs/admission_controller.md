@@ -5,8 +5,8 @@ This service runs a mutating webhook on `/mutate`.
 ## TLS Mutation Logic
 
 - Given a Gateway [labeled](./api/v1beta1.md) for management by the controller.
--- Inspect each Server entry.
--- For each server that sets `tls.mode = SIMPLE` construct a `tls.credentialName` using the following format: `<namespace>-<gateway name>-<port-name>`
+- Inspect each Server entry.
+- For each server that sets `tls.mode = SIMPLE` construct a `tls.credentialName` using the following format: `<namespace>-<gateway name>-<port-name>`
 
 For example:
 
@@ -43,10 +43,9 @@ The [Controller](./controllers/gateway.md) is responsible for the reconciliation
 
 - If the controller has external-dns management enabled
 - If the namespace the gateway is created in is subject to mutation
--- Delete the `external-dns.alpha.kubernetes.io/hostname` annotation if present.
--- If `externalDNSConfig.target` is a non-empty value
---- Set the `external-dns.alpha.kubernetes.io/target` value to the 
---- Else delete the annotation
+  - Delete the `external-dns.alpha.kubernetes.io/hostname` annotation if present.
+  - If `externalDNSConfig.target` is a non-empty value, et the `external-dns.alpha.kubernetes.io/target` value to the 
+  - Else delete the annotation
 
 For example, with --external-dns-target=loadbalancer-vanity.example.com set, the gateway configuration of:
 
