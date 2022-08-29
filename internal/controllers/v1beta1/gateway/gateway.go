@@ -73,9 +73,7 @@ func (c *GatewayController) SetupWithManager(ctx context.Context, mgr manager.Ma
 		return err
 	}
 
-	istioInformerFactory := istioinformers.NewSharedInformerFactoryWithOptions(c.istioClient, time.Second*30, istioinformers.WithTweakListOptions(func(listOptions *metav1.ListOptions) {
-		listOptions.LabelSelector = v1beta1labels.InjectSimpleCredentialNameLabelSelector()
-	}))
+	istioInformerFactory := istioinformers.NewSharedInformerFactoryWithOptions(c.istioClient, time.Second*30)
 
 	if err := ctrl.Watch(&source.Informer{Informer: istioInformerFactory.Networking().V1beta1().Gateways().Informer()},
 		&handler.EnqueueRequestForObject{}); err != nil {
@@ -103,6 +101,11 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 		return reconcile.Result{
 			Requeue: true,
 		}, err
+	}
+
+	//If we don't have the tls management label or it isn't set to true return
+	if val, ok := gateway.Labels[v1beta1labels.InjectSimpleCredentialNameLabel]; !ok || val != "true" {
+		return reconcile.Result{}, nil
 	}
 
 	for _, s := range gateway.Spec.Servers {
