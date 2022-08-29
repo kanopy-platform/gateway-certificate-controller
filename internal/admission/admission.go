@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
+	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
 	"istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
+	corev1 "k8s.io/api/core/v1"
+	corev1listers "k8s.io/client-go/listers/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -21,13 +25,74 @@ const (
 
 type GatewayMutationHook struct {
 	istioClient istioversionedclient.Interface
+	nsLister    corev1listers.NamespaceLister
 	decoder     *admission.Decoder
+	externalDNS *ExternalDNSConfig
 }
 
-func NewGatewayMutationHook(client istioversionedclient.Interface) *GatewayMutationHook {
+//ExternalDNSConfig passes configuration to the external DNS mutation behavior
+type ExternalDNSConfig struct {
+	enabled  bool
+	target   string
+	selector Selector
+}
+
+//Selector is a key value pair for matching annotations
+type Selector struct {
+	key   string
+	value string
+}
+
+//SetEnabled set the endabled field to a bool value
+func (edc *ExternalDNSConfig) SetEnabled(enabled bool) {
+	if edc != nil {
+		edc.enabled = enabled
+	}
+}
+
+//SetTarget sets the target field to a string value
+func (edc *ExternalDNSConfig) SetTarget(target string) {
+	if edc != nil {
+		edc.target = target
+	}
+}
+
+//SetSelector sets the select field from a string value or returns an error
+func (edc *ExternalDNSConfig) SetSelector(target string) error {
+
+	v := strings.Split(target, "=")
+	if len(v) < 2 {
+		return fmt.Errorf("External DNS annotation selector parse error expected key=value got: %q", target)
+	}
+	if edc != nil {
+		edc.selector = Selector{
+			key:   v[0],
+			value: v[1],
+		}
+	}
+	return nil
+}
+
+func NewExternalDNSConfig() *ExternalDNSConfig {
+	return &ExternalDNSConfig{
+		selector: Selector{
+			key:   v1beta1labels.DefaultGatewayAllowListLabel,
+			value: v1beta1labels.DefaultGatewayAllowListLabelOverrideValue,
+		},
+	}
+}
+
+func NewGatewayMutationHook(client istioversionedclient.Interface, nsl corev1listers.NamespaceLister, opts ...OptionsFunc) *GatewayMutationHook {
+
 	gmh := &GatewayMutationHook{
 		istioClient: client,
+		nsLister:    nsl,
 	}
+
+	for _, opt := range opts {
+		opt(gmh)
+	}
+
 	return gmh
 }
 
@@ -46,7 +111,14 @@ func (g *GatewayMutationHook) Handle(ctx context.Context, req admission.Request)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	gateway = mutate(ctx, gateway.DeepCopy())
+	var ns *corev1.Namespace
+	if g.externalDNS != nil && g.externalDNS.enabled {
+		ns, err = g.nsLister.Get(gateway.Namespace)
+		if err != nil {
+			log.Error(err, fmt.Sprintf("failed to get namespace: %s", gateway.Namespace))
+		}
+	}
+	gateway = mutate(ctx, gateway.DeepCopy(), g.externalDNS, ns)
 
 	jsonGateway, err := json.Marshal(gateway)
 	if err != nil {
@@ -76,20 +148,49 @@ func credentialName(ctx context.Context, namespace, name string, portName string
 	return fmt.Sprintf("%s-%s", prefix, portName)
 }
 
-func mutate(ctx context.Context, gateway *v1beta1.Gateway) *v1beta1.Gateway {
+func mutate(ctx context.Context, gateway *v1beta1.Gateway, externalDNS *ExternalDNSConfig, ns *corev1.Namespace) *v1beta1.Gateway {
 	log := log.FromContext(ctx)
 
-	for _, s := range gateway.Spec.Servers {
-		if s.Tls == nil {
-			continue
-		}
+	if externalDNS != nil && externalDNS.enabled {
+		mutateExternalDNSAnnotations(ctx, gateway, externalDNS, ns)
+	}
 
-		if s.Tls.Mode == networkingv1beta1.ServerTLSSettings_SIMPLE {
-			newCredentialName := credentialName(ctx, gateway.Namespace, gateway.Name, s.Port.Name)
-			log.Info(fmt.Sprintf("mutating gateway %s Tls.CredentialName, %s to %s", gateway.Name, s.Tls.CredentialName, newCredentialName))
-			s.Tls.CredentialName = newCredentialName
+	//If we don't have the tls management label or it isn't set to true return
+	if val, ok := gateway.Labels[v1beta1labels.InjectSimpleCredentialNameLabel]; ok && val == "true" {
+		for _, s := range gateway.Spec.Servers {
+			if s.Tls == nil {
+				continue
+			}
+
+			if s.Tls.Mode == networkingv1beta1.ServerTLSSettings_SIMPLE {
+				newCredentialName := credentialName(ctx, gateway.Namespace, gateway.Name, s.Port.Name)
+				log.Info(fmt.Sprintf("mutating gateway %s Tls.CredentialName, %s to %s", gateway.Name, s.Tls.CredentialName, newCredentialName))
+				s.Tls.CredentialName = newCredentialName
+			}
 		}
 	}
 
 	return gateway
+}
+
+func mutateExternalDNSAnnotations(ctx context.Context, gateway *v1beta1.Gateway, edc *ExternalDNSConfig, ns *corev1.Namespace) {
+
+	if gateway == nil || ns == nil || edc == nil {
+		return
+	}
+
+	// if any host ingress is allowed in the namespace, do no mutation and return
+	if allowed, ok := ns.Annotations[edc.selector.key]; ok && allowed == edc.selector.value {
+		return
+	}
+
+	// we only allow external-dns to use the hosts key on gateway server entries because those are validated by OPA
+	delete(gateway.Annotations, v1beta1labels.ExternalDNSHostnameAnnotationKey)
+
+	// set the target annotation if we have a target or delete it if we don't
+	if edc.target != "" {
+		gateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey] = edc.target
+	} else {
+		delete(gateway.Annotations, v1beta1labels.ExternalDNSTargetAnnotationKey)
+	}
 }

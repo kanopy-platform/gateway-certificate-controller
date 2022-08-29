@@ -18,6 +18,19 @@ var (
 	ManagedLabel                    = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-managed")
 )
 
+const (
+	//ExternalDNSHostnameAnnotationKey the external-dns annotation for setting the host for record creation
+	ExternalDNSHostnameAnnotationKey = "external-dns.alpha.kubernetes.io/hostname"
+
+	//ExternalDNSTargetAnnotationKey the external-dns annotation for setting the target of the host record
+	ExternalDNSTargetAnnotationKey = "external-dns.alpha.kubernetes.io/target"
+
+	//IngressAllowListLabel the
+	DefaultGatewayAllowListLabel = "ingress-whitelist"
+
+	DefaultGatewayAllowListLabelOverrideValue = "*"
+)
+
 func InjectSimpleCredentialNameLabelSelector() string {
 	return apilabels.Set(map[string]string{InjectSimpleCredentialNameLabel: "true"}).AsSelector().String()
 }
