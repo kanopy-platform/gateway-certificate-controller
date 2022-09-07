@@ -300,4 +300,13 @@ func TestMutate(t *testing.T) {
 	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
 	assert.False(t, found)
 	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
+
+	// Ensure we do mutate external dns annotations when passed a nil namespace pointer
+	var nilNS *corev1.Namespace
+	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), eDNS, nilNS)
+	assert.NotNil(t, mutatedGateway.Annotations)
+	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
+	assert.False(t, found)
+	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
+
 }

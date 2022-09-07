@@ -45,16 +45,12 @@ type Selector struct {
 
 //SetEnabled set the endabled field to a bool value
 func (edc *ExternalDNSConfig) SetEnabled(enabled bool) {
-	if edc != nil {
-		edc.enabled = enabled
-	}
+	edc.enabled = enabled
 }
 
 //SetTarget sets the target field to a string value
 func (edc *ExternalDNSConfig) SetTarget(target string) {
-	if edc != nil {
-		edc.target = target
-	}
+	edc.target = target
 }
 
 //SetSelector sets the select field from a string value or returns an error
@@ -64,11 +60,9 @@ func (edc *ExternalDNSConfig) SetSelector(target string) error {
 	if len(v) < 2 {
 		return fmt.Errorf("External DNS annotation selector parse error expected key=value got: %q", target)
 	}
-	if edc != nil {
-		edc.selector = Selector{
-			key:   v[0],
-			value: v[1],
-		}
+	edc.selector = Selector{
+		key:   v[0],
+		value: v[1],
 	}
 	return nil
 }
@@ -152,7 +146,7 @@ func mutate(ctx context.Context, gateway *v1beta1.Gateway, externalDNS *External
 	log := log.FromContext(ctx)
 
 	if externalDNS != nil && externalDNS.enabled {
-		mutateExternalDNSAnnotations(ctx, gateway, externalDNS, ns)
+		externalDNS.mutate(ctx, gateway, ns)
 	}
 
 	//If we don't have the tls management label or it isn't set to true return
@@ -173,15 +167,14 @@ func mutate(ctx context.Context, gateway *v1beta1.Gateway, externalDNS *External
 	return gateway
 }
 
-func mutateExternalDNSAnnotations(ctx context.Context, gateway *v1beta1.Gateway, edc *ExternalDNSConfig, ns *corev1.Namespace) {
+func (edc *ExternalDNSConfig) mutate(ctx context.Context, gateway *v1beta1.Gateway, ns *corev1.Namespace) {
 
-	if gateway == nil || ns == nil || edc == nil {
-		return
-	}
-
-	// if any host ingress is allowed in the namespace, do no mutation and return
-	if allowed, ok := ns.Annotations[edc.selector.key]; ok && allowed == edc.selector.value {
-		return
+	//If we don't have information about the namespace assume we want to mutate it.
+	if ns != nil {
+		// if any host ingress is allowed in the namespace, do no mutation and return
+		if allowed, ok := ns.Annotations[edc.selector.key]; ok && allowed == edc.selector.value {
+			return
+		}
 	}
 
 	// we only allow external-dns to use the hosts key on gateway server entries because those are validated by OPA
