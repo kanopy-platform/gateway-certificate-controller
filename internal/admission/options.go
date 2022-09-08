@@ -8,16 +8,12 @@ type OptionsFunc func(*GatewayMutationHook)
 
 func WithExternalDNSConfig(edc *ExternalDNSConfig) OptionsFunc {
 	return func(gmh *GatewayMutationHook) {
-		if edc != nil {
-			gmh.externalDNS = edc
-		}
+		gmh.externalDNS = edc
 	}
 }
 
 func WithNSLister(nsl corev1listers.NamespaceLister) OptionsFunc {
 	return func(gmh *GatewayMutationHook) {
-		if gmh != nil {
-			gmh.nsLister = nsl
-		}
+		gmh.nsLister = nsl
 	}
 }

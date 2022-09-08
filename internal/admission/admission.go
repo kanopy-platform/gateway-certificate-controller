@@ -70,8 +70,8 @@ func (edc *ExternalDNSConfig) SetSelector(target string) error {
 func NewExternalDNSConfig() *ExternalDNSConfig {
 	return &ExternalDNSConfig{
 		selector: Selector{
-			key:   v1beta1labels.DefaultGatewayAllowListLabel,
-			value: v1beta1labels.DefaultGatewayAllowListLabelOverrideValue,
+			key:   v1beta1labels.DefaultGatewayAllowListAnnotation,
+			value: v1beta1labels.DefaultGatewayAllowListAnnotationOverrideValue,
 		},
 	}
 }
