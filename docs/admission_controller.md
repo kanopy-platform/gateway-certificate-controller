@@ -41,6 +41,11 @@ The [Controller](./controllers/gateway.md) is responsible for the reconciliation
 
 ## External DNS Annotation Mutation Logic
 
+The external-dns mutation feature will remove the external-dns.alpha.kubernetes.io/hostname and remove or mutate external-dns.alpha.kubernetes.io/target annotations from all istio gateway objects. 
+The hsotname annotation is removed since:
+1. external-dns will always use the hosts list from the gateway server block when generating dns entries.
+1. istio requires the host on the gateway to route the request properly
+
 - If the controller has external-dns management enabled
 - If the namespace the gateway is created in is subject to mutation
   - Delete the `external-dns.alpha.kubernetes.io/hostname` annotation if present.
