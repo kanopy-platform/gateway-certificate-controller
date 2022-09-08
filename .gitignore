@@ -1,3 +1,4 @@
 .licenses
 bin/
 .vscode
+*.swp
