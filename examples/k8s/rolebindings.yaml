@@ -4,6 +4,13 @@ kind: ClusterRole
 metadata:
   name: kanopy-gateway-cert-controller
 rules:
+- apiGroups: [""]
+  resources:
+  -  namespaces
+  verbs:
+  - list
+  - get
+  - watch
 - apiGroups:
   - networking.istio.io
   resources:

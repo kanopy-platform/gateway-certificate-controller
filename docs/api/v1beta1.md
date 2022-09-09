@@ -1,13 +1,14 @@
 # API - v1beta1
 
-## Gateway
+## Server TLS
 
-The gateway controller will only manage certificates for [v1beta1.Gateway](https://pkg.go.dev/istio.io/api/networking/v1beta1#Gateway) resources that are labeled with the following:
+The gateway and admission controllers will only mutate TLS and manage certificates for [v1beta1.Gateway](https://pkg.go.dev/istio.io/api/networking/v1beta1#Gateway) resources that are labeled with the following:
 
 ```yaml
 labels:
     "v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"
 ```
+
 
 When this label is set the controller will take over the TLS.CredentialName and install a certificate according to the default issuer set during [Installation](../installation.md)
 
