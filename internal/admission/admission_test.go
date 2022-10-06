@@ -310,3 +310,45 @@ func TestMutate(t *testing.T) {
 	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
 
 }
+
+func TestMutateWithNoMetadata(t *testing.T) {
+	t.Parallel()
+
+	gateway := v1beta1.Gateway{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "example-gateway",
+			Namespace: "devops",
+			Labels:    map[string]string{v1beta1labels.InjectSimpleCredentialNameLabel: "true"},
+		},
+		Spec: networkingv1beta1.Gateway{
+			Servers: []*networkingv1beta1.Server{
+				{
+					Tls: nil,
+					Port: &networkingv1beta1.Port{
+						Number: 80,
+						Name:   "http",
+					},
+				},
+			},
+		},
+	}
+
+	eDNS := NewExternalDNSConfig()
+	eDNS.SetEnabled(true)
+	eDNS.SetTarget("vanity-target")
+
+	ns := corev1.Namespace{
+		ObjectMeta: v1.ObjectMeta{
+			Annotations: map[string]string{"ingress-whitelist": "*.devops.example.com"},
+			Name:        "devops",
+		},
+	}
+
+	mutatedGateway := mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	assert.Equal(t, gateway.Spec.Servers[0], mutatedGateway.Spec.Servers[0])
+
+	assert.NotNil(t, mutatedGateway.Annotations)
+	_, found := mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
+	assert.False(t, found)
+	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
+}

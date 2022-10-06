@@ -177,6 +177,10 @@ func (edc *ExternalDNSConfig) mutate(ctx context.Context, gateway *v1beta1.Gatew
 		}
 	}
 
+	if gateway.Annotations == nil {
+		gateway.Annotations = map[string]string{}
+	}
+
 	// we only allow external-dns to use the hosts key on gateway server entries because those are validated by OPA
 	delete(gateway.Annotations, v1beta1labels.ExternalDNSHostnameAnnotationKey)
 
