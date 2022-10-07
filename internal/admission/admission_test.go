@@ -66,7 +66,10 @@ func TestGatewayMutationHook(t *testing.T) {
 	ns.Name = "devops"
 	nsl.set(&ns)
 
-	gmh := NewGatewayMutationHook(istiofake.NewSimpleClientset(), nsl)
+	eDNS := NewExternalDNSConfig()
+	eDNS.SetEnabled(true)
+	eDNS.SetTarget("vanity-target")
+	gmh := NewGatewayMutationHook(istiofake.NewSimpleClientset(), nsl, WithExternalDNSConfig(eDNS))
 
 	scheme := runtime.NewScheme()
 	utilruntime.Must(v1beta1.SchemeBuilder.AddToScheme(scheme))

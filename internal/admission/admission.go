@@ -186,6 +186,9 @@ func (edc *ExternalDNSConfig) mutate(ctx context.Context, gateway *v1beta1.Gatew
 
 	// set the target annotation if we have a target or delete it if we don't
 	if edc.target != "" {
+		if gateway.Annotations == nil {
+			gateway.Annotations = map[string]string{}
+		}
 		gateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey] = edc.target
 	} else {
 		delete(gateway.Annotations, v1beta1labels.ExternalDNSTargetAnnotationKey)
