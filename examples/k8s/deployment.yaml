@@ -118,9 +118,6 @@ webhooks:
   admissionReviewVersions: ["v1beta1"]
   failurePolicy: Ignore
   name: v1beta1.kanopy-platform.github.io
-  objectSelector:
-    matchLabels:
-      "v1beta1.kanopy-platform.github.io/istio-cert-controller-inject-simple-credential-name": "true"
   rules:
   - apiGroups:
     - networking.istio.io
