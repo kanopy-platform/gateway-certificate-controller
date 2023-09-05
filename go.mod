@@ -1,6 +1,6 @@
 module github.com/kanopy-platform/gateway-certificate-controller
 
-go 1.17
+go 1.20
 
 require (
 	github.com/cert-manager/cert-manager v1.8.0

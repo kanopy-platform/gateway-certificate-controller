@@ -19,7 +19,7 @@ dev: tidy
 
 .PHONY:
 tidy:
-	go mod tidy -go=1.16 && go mod tidy -go=1.17
+	go mod tidy
 
 .PHONY: docker-build-test
 docker-build-test: ## Build local development docker image with cached go modules, builds, and tests
