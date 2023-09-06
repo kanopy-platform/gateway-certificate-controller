@@ -2,6 +2,7 @@ package cache
 
 import (
 	"fmt"
+	"strings"
 
 	"sync"
 
@@ -117,9 +118,17 @@ func gwToHosts(gw *v1beta1.Gateway) []string {
 
 	for _, server := range gw.Spec.Servers {
 		for _, host := range server.Hosts {
-			if host != "*" {
-				hosts = append(hosts, host)
+			// wildcard certificates cannot be solved via http-01
+			if strings.Contains(host, "*") {
+				continue
 			}
+
+			// split hosts in the namespace/dns.host.name format
+			out, post, ok := strings.Cut(host, "/")
+			if ok {
+				out = post
+			}
+			hosts = append(hosts, out)
 		}
 	}
 

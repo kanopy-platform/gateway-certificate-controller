@@ -61,7 +61,6 @@ func TestGatewayLookupCache(t *testing.T) {
 
 	for _, test := range tests {
 		out, ok := glc.Get("a.example.com")
-		fmt.Println(out)
 		assert.Equal(t, test.getInitial, ok, test.name+" before")
 		glc.Add(test.gw, test.hosts...)
 		if test.del {
@@ -91,6 +90,8 @@ func TestGatewayLookupCacheEventAddFunc(t *testing.T) {
 					Hosts: []string{
 						"a.b.c.d",
 						"a.example.com",
+						"example/dns.host.name",
+						"*.dns.example.com",
 					},
 				},
 			},
@@ -101,12 +102,16 @@ func TestGatewayLookupCacheEventAddFunc(t *testing.T) {
 
 	assert.NoError(t, glc.AddFunc(gw))
 
-	out, ok := glc.Get("a.b.c.d")
+	out, _ := glc.Get("a.b.c.d")
 	assert.Equal(t, "example/testy", out)
-	out, ok = glc.Get("a.example.com")
+	out, _ = glc.Get("a.example.com")
+	assert.Equal(t, "example/testy", out)
+	out, _ = glc.Get("dns.host.name")
 	assert.Equal(t, "example/testy", out)
 
-	_, ok = glc.Get("missing")
+	_, ok := glc.Get("missing")
+	assert.False(t, ok)
+	_, ok = glc.Get("*.dns.example.com")
 	assert.False(t, ok)
 
 	gw = &v1beta1.Gateway{
