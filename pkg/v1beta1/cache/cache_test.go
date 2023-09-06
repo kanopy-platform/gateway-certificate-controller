@@ -99,8 +99,7 @@ func TestGatewayLookupCacheEventAddFunc(t *testing.T) {
 	}
 
 	glc := cache.New()
-
-	assert.NoError(t, glc.AddFunc(gw))
+	glc.AddFunc(gw)
 
 	out, _ := glc.Get("a.b.c.d")
 	assert.Equal(t, "example/testy", out)
@@ -130,7 +129,7 @@ func TestGatewayLookupCacheEventAddFunc(t *testing.T) {
 		},
 	}
 
-	assert.NoError(t, glc.AddFunc(gw))
+	glc.AddFunc(gw)
 	out, ok = glc.Get("missing")
 	assert.True(t, ok)
 	assert.Equal(t, "example/missing", out)
@@ -173,13 +172,12 @@ func TestGatewayLookupCacheEventUpdateFunc(t *testing.T) {
 	}
 
 	glc := cache.New()
-
-	assert.NoError(t, glc.AddFunc(original))
+	glc.AddFunc(original)
 
 	_, ok := glc.Get("a.example.com")
 	assert.True(t, ok)
 
-	assert.NoError(t, glc.UpdateFunc(original, updated))
+	glc.UpdateFunc(original, updated)
 	_, ok = glc.Get("a.example.com")
 	assert.False(t, ok)
 	for _, host := range updated.Spec.Servers[0].Hosts {
@@ -210,11 +208,11 @@ func TestGatewayLookupCacheEventDeleteFunc(t *testing.T) {
 
 	glc := cache.New()
 
-	assert.NoError(t, glc.AddFunc(gw))
+	glc.AddFunc(gw)
 	_, ok := glc.Get("a.example.com")
 	assert.True(t, ok)
 
-	assert.NoError(t, glc.DeleteFunc(gw))
+	glc.DeleteFunc(gw)
 	for _, host := range gw.Spec.Servers[0].Hosts {
 
 		_, ok := glc.Get(host)
@@ -223,21 +221,21 @@ func TestGatewayLookupCacheEventDeleteFunc(t *testing.T) {
 
 }
 
-func TestGatewayLookupCacheEventFuncErrors(t *testing.T) {
+func TestGatewayLookupCacheEventFuncEdgeCases(t *testing.T) {
 
 	thing := "notagatewaypointer"
 	gw := &v1beta1.Gateway{}
 	glc := cache.New()
 	// Ensure that an error is returned if the input isn't a *Gateway
-	assert.Error(t, glc.AddFunc(thing))
-	assert.Error(t, glc.UpdateFunc(thing, gw))
-	assert.Error(t, glc.UpdateFunc(gw, thing))
-	assert.Error(t, glc.DeleteFunc(thing))
+	assert.NotPanics(t, func() { glc.AddFunc(thing) })
+	assert.NotPanics(t, func() { glc.UpdateFunc(thing, gw) })
+	assert.NotPanics(t, func() { glc.UpdateFunc(gw, thing) })
+	assert.NotPanics(t, func() { glc.DeleteFunc(thing) })
 
 	// Ensure no error is returned for a nil gateway, a nil gateway results in no changes
 	var ngw *v1beta1.Gateway
-	assert.NoError(t, glc.AddFunc(ngw))
-	assert.NoError(t, glc.UpdateFunc(gw, ngw))
-	assert.NoError(t, glc.UpdateFunc(ngw, gw))
-	assert.NoError(t, glc.DeleteFunc(ngw))
+	assert.NotPanics(t, func() { glc.AddFunc(ngw) })
+	assert.NotPanics(t, func() { glc.UpdateFunc(gw, ngw) })
+	assert.NotPanics(t, func() { glc.UpdateFunc(ngw, gw) })
+	assert.NotPanics(t, func() { glc.DeleteFunc(ngw) })
 }

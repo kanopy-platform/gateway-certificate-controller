@@ -6,7 +6,9 @@ import (
 
 	"sync"
 
+	"github.com/go-logr/logr"
 	v1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	klog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func main() {
@@ -16,14 +18,16 @@ func main() {
 // GatewayLookupCache provides concurrency safe lookups from dns host to namespace/gateway
 // Use New() as the Add, Delete, and Get functions all assume the cache map is non-nil
 type GatewayLookupCache struct {
-	cache map[string]string
-	mutex sync.Mutex
+	cache  map[string]string
+	mutex  sync.Mutex
+	logger logr.Logger
 }
 
 func New() *GatewayLookupCache {
 	return &GatewayLookupCache{
-		cache: make(map[string]string),
-		mutex: sync.Mutex{},
+		cache:  make(map[string]string),
+		mutex:  sync.Mutex{},
+		logger: klog.Log,
 	}
 
 }
@@ -54,52 +58,57 @@ func (glc *GatewayLookupCache) Get(host string) (string, bool) {
 	return gw, ok
 }
 
-func (glc *GatewayLookupCache) AddFunc(obj interface{}) error {
+func (glc *GatewayLookupCache) AddFunc(obj interface{}) {
 	gw, ok := obj.(*v1beta1.Gateway)
 	if !ok {
-		return fmt.Errorf("Not a gateway.v1beta1.istio.io resource")
+		glc.logger.V(1).Info("Not a gateway.v1beta1.istio.io resource")
+		return
 
 	}
 
 	if gw == nil {
-		return nil
+		return
 	}
 
 	namespacedName := fmt.Sprintf("%s/%s", gw.Namespace, gw.Name)
 	hosts := gwToHosts(gw)
 	glc.Add(namespacedName, hosts...)
-	return nil
+
+	return
 }
-func (glc *GatewayLookupCache) DeleteFunc(obj interface{}) error {
+func (glc *GatewayLookupCache) DeleteFunc(obj interface{}) {
 	gw, ok := obj.(*v1beta1.Gateway)
 	if !ok {
-		return fmt.Errorf("Not a gateway.v1beta1.istio.io resource")
+		glc.logger.V(1).Info("Not a gateway.v1beta1.istio.io resource")
+		return
 
 	}
 
 	if gw == nil {
-		return nil
+		return
 	}
 
 	hosts := gwToHosts(gw)
 	glc.Delete(hosts...)
-	return nil
+	return
 }
-func (glc *GatewayLookupCache) UpdateFunc(oldObj, newObj interface{}) error {
+func (glc *GatewayLookupCache) UpdateFunc(oldObj, newObj interface{}) {
 	oldGW, ok := oldObj.(*v1beta1.Gateway)
 	if !ok {
-		return fmt.Errorf("Old obj not a gateway.v1beta1.istio.io resource")
+		glc.logger.V(1).Info("Not a gateway.v1beta1.istio.io resource")
+		return
 
 	}
 
 	newGW, ok := newObj.(*v1beta1.Gateway)
 	if !ok {
-		return fmt.Errorf("New obj not a gateway.v1beta1.istio.io resource")
+		glc.logger.V(1).Info("Not a gateway.v1beta1.istio.io resource")
+		return
 
 	}
 
 	if oldGW == nil || newGW == nil {
-		return nil
+		return
 	}
 
 	namespacedName := fmt.Sprintf("%s/%s", newGW.Namespace, newGW.Name)
@@ -107,7 +116,7 @@ func (glc *GatewayLookupCache) UpdateFunc(oldObj, newObj interface{}) error {
 
 	glc.Add(namespacedName, adds...)
 	glc.Delete(deletes...)
-	return nil
+	return
 }
 
 func gwToHosts(gw *v1beta1.Gateway) []string {
