@@ -4,13 +4,16 @@ kind: Config
 build:
   insecureRegistries:
     - registry.example.com
-  local:
-    push: true
+  tagPolicy:
+    gitCommit: {}
   artifacts:
     - image: registry.example.com/kanopy-gateway-cert-controller
-      ko: {}
+      kaniko:
+        skipTLS: true
+        buildArgs:
+  cluster: {}
 deploy:
-  kubeContext: minikube
+  kubeContext: kind-kind
   kubectl:
     defaultNamespace: routing
     manifests:
