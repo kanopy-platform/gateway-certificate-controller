@@ -13,9 +13,10 @@ import (
 type Label string
 
 var (
-	InjectSimpleCredentialNameLabel = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-inject-simple-credential-name")
-	IssuerAnnotation                = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-issuer")
-	ManagedLabel                    = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-managed")
+	InjectSimpleCredentialNameLabel     = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-inject-simple-credential-name")
+	IssuerAnnotation                    = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-issuer")
+	ManagedLabel                        = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-managed")
+	IssueTemporaryCertificateAnnotation = fmt.Sprintf("%s/%s", version.String(), IssueTemporaryCertificate)
 )
 
 const (
@@ -25,8 +26,11 @@ const (
 	//ExternalDNSTargetAnnotationKey the external-dns annotation for setting the target of the host record
 	ExternalDNSTargetAnnotationKey = "external-dns.alpha.kubernetes.io/target"
 
-	//IngressAllowListAnnotation the default key for the label controlling external-dns mutation opt out
+	//DefaultGatewayAllowListAnnotation the default key for the label controlling external-dns mutation opt out
 	DefaultGatewayAllowListAnnotation = "ingress-whitelist"
+
+	//IssueTemporaryCertificate idicates that the cert-manager.io/issue-temporary-certificate annotation for a certificate should be set to true
+	IssueTemporaryCertificate = "issue-temporary-certificate"
 
 	//DefaultGatewayAllowListAnnotationOverrideValue the default value for the label controlling external-dns mutation opt out
 	DefaultGatewayAllowListAnnotationOverrideValue = "*"

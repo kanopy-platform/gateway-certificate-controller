@@ -167,8 +167,9 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 			APIVersion: "cert-manager.io/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   server.Tls.CredentialName,
-			Labels: map[string]string{v1beta1labels.ManagedLabel: fmt.Sprintf("%s.%s", gateway.Name, gateway.Namespace)},
+			Name:        server.Tls.CredentialName,
+			Labels:      map[string]string{v1beta1labels.ManagedLabel: fmt.Sprintf("%s.%s", gateway.Name, gateway.Namespace)},
+			Annotations: map[string]string{},
 		},
 		Spec: v1certmanager.CertificateSpec{
 			DNSNames:   getSortedHostsWithoutNamespace(server.Hosts),
@@ -180,6 +181,11 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 			},
 		},
 	}
+
+	if b, ok := gateway.Annotations[v1beta1labels.IssueTemporaryCertificateAnnotation]; ok && b == "true" {
+		cert.ObjectMeta.Annotations[v1certmanager.IssueTemporaryCertificateAnnotation] = "true"
+	}
+
 	createOptions := metav1.CreateOptions{FieldManager: FieldManager}
 	if c.dryRun {
 		log.Info("[dryrun] create certificate", "cert", cert)
