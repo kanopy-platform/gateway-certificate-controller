@@ -20,6 +20,11 @@ type ChallengeSolver struct {
 	glc              *cache.GatewayLookupCache
 }
 
+func (cs *ChallengeSolver) Reconcile(ctx context.Context, o Request) (Result, error) {
+
+	return nil, nil
+}
+
 func (cs *ChallengeSolver) Solve(challenge *acmev1.Challenge) {
 
 	httpDomainHash := fmt.Sprintf("%d", adler32.Checksum([]byte(challenge.Spec.DNSName)))
