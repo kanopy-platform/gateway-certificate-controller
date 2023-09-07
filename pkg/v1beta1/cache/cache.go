@@ -140,7 +140,7 @@ func gwToHosts(gw *v1beta1.Gateway) []string {
 	return hosts
 }
 
-//diffSlices takes two slices an returns a list of additions and subtractions in the newer list
+// diffSlices takes two slices an returns a list of additions and subtractions in the newer list
 func diffSlices(old, newer []string) ([]string, []string) {
 	adds, dels := []string{}, []string{}
 
