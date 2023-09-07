@@ -12,6 +12,7 @@ import (
 
 	certmanagerfake "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/fake"
 	certmanagerv1fake "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/typed/certmanager/v1/fake"
+	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
 	"istio.io/client-go/pkg/apis/networking/v1beta1"
@@ -38,13 +39,14 @@ type controllerSpy struct {
 }
 
 type GatewayOptions struct {
-	Certificates   []runtime.Object
-	Hosts          []string
-	CredentialName string
-	DryRun         bool
-	Annotations    map[string]string
-	Labels         map[string]string
-	Servers        []*networkingv1beta1.Server
+	Certificates       []runtime.Object
+	Hosts              []string
+	CredentialName     string
+	DryRun             bool
+	GatewayLookupCache *cache.GatewayLookupCache
+	Annotations        map[string]string
+	Labels             map[string]string
+	Servers            []*networkingv1beta1.Server
 }
 
 func namespacedHost(host string) string {
@@ -80,6 +82,12 @@ func WithAnnotations(annotations map[string]string) func(*GatewayOptions) {
 func WithLabels(labels map[string]string) func(*GatewayOptions) {
 	return func(gopt *GatewayOptions) {
 		gopt.Labels = labels
+	}
+}
+
+func WithGLC(glc *cache.GatewayLookupCache) func(*GatewayOptions) {
+	return func(gopt *GatewayOptions) {
+		gopt.GatewayLookupCache = glc
 	}
 }
 
@@ -210,7 +218,7 @@ func NewTestHelperWithCertificates(opts ...func(*GatewayOptions)) *TestHelper {
 
 func setupControllerWithSpy(cs *istiofake.Clientset, certFake *certmanagerfake.Clientset, opts *GatewayOptions) *controllerSpy {
 	spy := &controllerSpy{
-		GatewayController: NewGatewayController(cs, certFake, WithDryRun(opts.DryRun), WithCertificateNamespace(TestCertNamespace)),
+		GatewayController: NewGatewayController(cs, certFake, WithDryRun(opts.DryRun), WithCertificateNamespace(TestCertNamespace), WithGatewayLookupCache(opts.GatewayLookupCache)),
 	}
 	spy.GatewayController.certHandler = spy
 	return spy
@@ -310,7 +318,8 @@ func TestGatewayReconcile_CreateCertificateLabeledAsManaged(t *testing.T) {
 
 func TestGatewayReconcile_CreateCertificateWithHosts(t *testing.T) {
 	t.Parallel()
-	helper := NewTestHelperWithGateways()
+	glc := cache.New()
+	helper := NewTestHelperWithGateways(WithGLC(glc))
 	assertCreateCertificateCalled(t, helper)
 	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
 	assert.NoError(t, err)
