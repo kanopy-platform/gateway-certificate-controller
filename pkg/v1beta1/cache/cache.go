@@ -70,14 +70,12 @@ func (glc *GatewayLookupCache) AddFunc(obj interface{}) {
 	hosts := gwToHosts(gw)
 	glc.Add(namespacedName, hosts...)
 
-	return
 }
 func (glc *GatewayLookupCache) DeleteFunc(obj interface{}) {
 	gw, ok := obj.(*v1beta1.Gateway)
 	if !ok {
 		glc.logger.V(1).Info("Not a gateway.v1beta1.istio.io resource")
 		return
-
 	}
 
 	if gw == nil {
@@ -86,8 +84,8 @@ func (glc *GatewayLookupCache) DeleteFunc(obj interface{}) {
 
 	hosts := gwToHosts(gw)
 	glc.Delete(hosts...)
-	return
 }
+
 func (glc *GatewayLookupCache) UpdateFunc(oldObj, newObj interface{}) {
 	oldGW, ok := oldObj.(*v1beta1.Gateway)
 	if !ok {
@@ -112,7 +110,6 @@ func (glc *GatewayLookupCache) UpdateFunc(oldObj, newObj interface{}) {
 
 	glc.Add(namespacedName, adds...)
 	glc.Delete(deletes...)
-	return
 }
 
 func gwToHosts(gw *v1beta1.Gateway) []string {
