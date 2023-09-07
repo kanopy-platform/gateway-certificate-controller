@@ -11,10 +11,6 @@ import (
 	klog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func main() {
-	fmt.Println("vim-go")
-}
-
 // GatewayLookupCache provides concurrency safe lookups from dns host to namespace/gateway
 // Use New() as the Add, Delete, and Get functions all assume the cache map is non-nil
 type GatewayLookupCache struct {
