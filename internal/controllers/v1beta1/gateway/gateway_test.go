@@ -339,7 +339,7 @@ func TestGatewayReconcile_CreatCertificateWithClusterIssuerFromGatewayAnnotation
 	assert.Equal(t, "ClusterIssuer", cert.Spec.IssuerRef.Kind)
 }
 
-func TestGatewayReconcile_CreatCertificateWithTempCertAnnotation(t *testing.T) {
+func TestGatewayReconcile_CreateCertificateWithTempCertAnnotation(t *testing.T) {
 	t.Parallel()
 	helper := NewTestHelperWithGateways(WithAnnotations(map[string]string{
 		v1beta1labels.IssueTemporaryCertificateAnnotation: "true",
