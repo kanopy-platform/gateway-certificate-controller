@@ -339,6 +339,19 @@ func TestGatewayReconcile_CreatCertificateWithClusterIssuerFromGatewayAnnotation
 	assert.Equal(t, "ClusterIssuer", cert.Spec.IssuerRef.Kind)
 }
 
+func TestGatewayReconcile_CreateCertificateWithTempCertAnnotation(t *testing.T) {
+	t.Parallel()
+	helper := NewTestHelperWithGateways(WithAnnotations(map[string]string{
+		v1beta1labels.IssueTemporaryCertificateAnnotation: "true",
+	}))
+	assertCreateCertificateCalled(t, helper)
+	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
+	assert.NoError(t, err)
+	out, ok := cert.ObjectMeta.Annotations[v1certmanager.IssueTemporaryCertificateAnnotation]
+	assert.True(t, ok)
+	assert.Equal(t, "true", out)
+}
+
 func TestGatewayReconcile_SkipCertificateForTLSModePassthrough(t *testing.T) {
 	t.Parallel()
 	helper := NewTestHelperWithGateways(AppendServer(&networkingv1beta1.Server{
