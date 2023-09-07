@@ -140,16 +140,9 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *networkingv1beta1.Gateway, server *v1beta1.Server) error {
 	log := log.FromContext(ctx)
 	issuer := c.clusterIssuer
-	var tcb bool
 
 	if i, ok := gateway.Annotations[v1beta1labels.IssuerAnnotation]; ok {
 		issuer = i
-	}
-
-	if b, ok := gateway.Annotations[v1beta1labels.IssueTemporaryCertificateAnnotation]; ok {
-		if b == "true" {
-			tcb = true
-		}
 	}
 
 	if server.Tls.Mode != v1beta1.ServerTLSSettings_SIMPLE {
@@ -177,7 +170,7 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 		},
 	}
 
-	if tcb {
+	if b, ok := gateway.Annotations[v1beta1labels.IssueTemporaryCertificateAnnotation]; ok && b == "true" {
 		cert.ObjectMeta.Annotations[v1certmanager.IssueTemporaryCertificateAnnotation] = "true"
 	}
 
