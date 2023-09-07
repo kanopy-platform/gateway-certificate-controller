@@ -151,13 +151,13 @@ func diffSlices(old, newer []string) ([]string, []string) {
 			}
 		}
 
-		if current[newVal] != true {
+		if !current[newVal] {
 			adds = append(adds, newVal)
 		}
 	}
 
 	for _, oldVal := range old {
-		if current[oldVal] != true {
+		if !current[oldVal] {
 			dels = append(dels, oldVal)
 		}
 	}

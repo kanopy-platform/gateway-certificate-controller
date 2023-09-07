@@ -60,14 +60,14 @@ func TestGatewayLookupCache(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		out, ok := glc.Get("a.example.com")
+		_, ok := glc.Get("a.example.com")
 		assert.Equal(t, test.getInitial, ok, test.name+" before")
 		glc.Add(test.gw, test.hosts...)
 		if test.del {
 			glc.Delete(test.hosts...)
 		}
 
-		out, ok = glc.Get("a.example.com")
+		out, ok := glc.Get("a.example.com")
 
 		assert.Equal(t, test.getAfter, ok, test.name+" after")
 		if ok {
