@@ -1,8 +1,16 @@
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kanopy-gateway-cert-controller
+  labels:
+    app: kanopy-gateway-cert-controller
+...
+---
 apiVersion: cert-manager.io/v1alpha2
 kind: Issuer
 metadata:
-  name: kanopy-gateway-cert-controller-selfsigned
+  name: selfsigned-kanopy-gateway-cert-controller
 spec:
   selfSigned: {}
 ---
@@ -16,8 +24,8 @@ spec:
     - kanopy-gateway-cert-controller.routing.svc
     - kanopy-gateway-cert-controller.routing.svc.cluster.local
   issuerRef:
-    name: kanopy-gateway-cert-controller-selfsigned
-  
+    name: selfsigned-kanopy-gateway-cert-controller
+...
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -71,8 +79,8 @@ spec:
         - name: webhook-certs
           secret:
             secretName: kanopy-gateway-cert-controller
-
----   
+...
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -89,15 +97,7 @@ spec:
     name: webhooks
   selector:
     app: kanopy-gateway-cert-controller
-
----   
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: kanopy-gateway-cert-controller
-  labels:
-    app: kanopy-gateway-cert-controller
-
+...
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -129,3 +129,4 @@ webhooks:
     resources:
     - gateways
     scope: "Namespaced"
+...

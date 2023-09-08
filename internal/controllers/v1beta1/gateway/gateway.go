@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
 
 	certmanagerclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
@@ -16,6 +17,7 @@ import (
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
 	istioinformers "istio.io/client-go/pkg/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8scache "k8s.io/client-go/tools/cache"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -45,6 +47,7 @@ type GatewayController struct {
 	name                 string
 	certificateNamespace string
 	clusterIssuer        string
+	gatewayLookupCache   *cache.GatewayLookupCache
 	certHandler          certificateHandler
 }
 
@@ -75,7 +78,16 @@ func (c *GatewayController) SetupWithManager(ctx context.Context, mgr manager.Ma
 
 	istioInformerFactory := istioinformers.NewSharedInformerFactoryWithOptions(c.istioClient, time.Second*30)
 
-	if err := ctrl.Watch(&source.Informer{Informer: istioInformerFactory.Networking().V1beta1().Gateways().Informer()},
+	informer := istioInformerFactory.Networking().V1beta1().Gateways().Informer()
+	if c.gatewayLookupCache != nil {
+		informer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
+			AddFunc:    c.gatewayLookupCache.AddFunc,
+			UpdateFunc: c.gatewayLookupCache.UpdateFunc,
+			DeleteFunc: c.gatewayLookupCache.DeleteFunc,
+		})
+	}
+
+	if err := ctrl.Watch(&source.Informer{Informer: informer},
 		&handler.EnqueueRequestForObject{}); err != nil {
 		return err
 	}

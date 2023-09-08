@@ -7,9 +7,10 @@ import (
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	// import oidc auth
+	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
-	"k8s.io/client-go/tools/cache"
+	k8scache "k8s.io/client-go/tools/cache"
 
 	"github.com/kanopy-platform/gateway-certificate-controller/internal/admission"
 	v1beta1gc "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1/garbagecollection"
@@ -144,10 +145,13 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	glc := cache.New()
+
 	if err := v1beta1controllers.NewGatewayController(ic, cmc,
 		v1beta1controllers.WithDryRun(viper.GetBool("dry-run")),
 		v1beta1controllers.WithDefaultClusterIssuer(viper.GetString("default-issuer")),
-		v1beta1controllers.WithCertificateNamespace(viper.GetString("certificate-namespace"))).
+		v1beta1controllers.WithCertificateNamespace(viper.GetString("certificate-namespace")),
+		v1beta1controllers.WithGatewayLookupCache(glc)).
 		SetupWithManager(ctx, mgr); err != nil {
 		return err
 	}
@@ -196,7 +200,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		nsInformer = k8sInformerFactory.Core().V1().Namespaces()
 
 		//need at least one listener func to populate the in memory cache
-		nsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		nsInformer.Informer().AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 			AddFunc: func(new interface{}) {},
 		})
 
