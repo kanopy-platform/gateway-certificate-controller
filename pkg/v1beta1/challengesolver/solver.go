@@ -9,17 +9,20 @@ import (
 	acmev1Client "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/typed/acme/v1"
 
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
-	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+
+	apinetv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	netapplymetav1 "istio.io/client-go/pkg/applyconfiguration/meta/v1"
+	netapplyv1beta1 "istio.io/client-go/pkg/applyconfiguration/networking/v1beta1"
 	networkingv1beta1Client "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1beta1"
 
 	istiov1beta1 "istio.io/api/networking/v1beta1"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/yaml"
 )
 
 type ChallengeSolver struct {
@@ -47,7 +50,8 @@ func (cs *ChallengeSolver) Reconcile(ctx context.Context, req reconcile.Request)
 	challenge, err := cs.acmeClient.Challenges(req.Namespace).Get(ctx, req.Name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return reconcile.Result{}, nil // garbage collection will handle
+			//for a reconciler this likely means deletion, owner references will clean up any existing VirtualServices
+			return reconcile.Result{}, nil
 		}
 
 		log.Error(err, "Error reconciling challenge, requeued")
@@ -56,7 +60,7 @@ func (cs *ChallengeSolver) Reconcile(ctx context.Context, req reconcile.Request)
 		}, err
 	}
 
-	err = cs.Solve(ctx, challenge)
+	_, err = cs.Solve(ctx, challenge)
 	if err != nil {
 		//TODO type errors as recoverable or not
 		return reconcile.Result{
@@ -67,18 +71,22 @@ func (cs *ChallengeSolver) Reconcile(ctx context.Context, req reconcile.Request)
 	return reconcile.Result{}, nil
 }
 
-func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challenge) error {
+func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challenge) (*apinetv1beta1.VirtualService, error) {
 	log := log.FromContext(ctx)
 	log.V(1).Info("Debug")
 
-	httpDomainHash := fmt.Sprintf("%d", adler32.Checksum([]byte(challenge.Spec.DNSName)))
-	tokenHash := fmt.Sprintf("%d", adler32.Checksum([]byte(challenge.Spec.Token)))
+	if challenge == nil {
+		return nil, nil
+	}
+
+	httpDomainHash := cs.Hash(challenge.Spec.DNSName)
+	tokenHash := cs.Hash(challenge.Spec.Token)
 
 	namespacedGateway, ok := cs.glc.Get(challenge.Spec.DNSName)
 	if !ok {
 		// requeue the request to wait for the lookup cache to populate
 		// probably needs backoff
-		return fmt.Errorf("Host %s: Gateway not found.", challenge.Spec.DNSName)
+		return nil, fmt.Errorf("Host %s: Gateway not found.", challenge.Spec.DNSName)
 	}
 	log.V(1).Info(fmt.Sprintf("Debug: gateway found %s", namespacedGateway))
 
@@ -89,24 +97,58 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 	serviceList, err := cs.coreClient.Services(challenge.Namespace).List(context.TODO(), listOpts)
 	if err != nil {
 		// requeue the request to wait for the service to appear in the api
-		return err
+		return nil, err
 	}
 
 	if len(serviceList.Items) == 0 {
 		// requeue the request to wait for the service to appear in the api
-		return fmt.Errorf("No service matched selector: %s", fmt.Sprintf("%s=%s,%s=%s", acmev1.DomainLabelKey, httpDomainHash, acmev1.TokenLabelKey, tokenHash))
+		return nil, fmt.Errorf("No service matched selector: %s", fmt.Sprintf("%s=%s,%s=%s", acmev1.DomainLabelKey, httpDomainHash, acmev1.TokenLabelKey, tokenHash))
 	}
 	svc := serviceList.Items[0]
 
 	if len(svc.Spec.Ports) == 0 {
 		// this is probably unrecoverable
-		return fmt.Errorf("Service: %s, missing port definition", svc.Name)
+		return nil, fmt.Errorf("Service: %s, missing port definition", svc.Name)
 	}
-	port := uint32(svc.Spec.Ports[0].Port)
-	vs := networkingv1beta1.VirtualService{
-		Spec: istiov1beta1.VirtualService{
-			Hosts:    []string{challenge.Spec.DNSName},
-			Gateways: []string{namespacedGateway},
+
+	cm := ChallengeMeta{
+		Port:      svc.Spec.Ports[0].Port,
+		Service:   svc.Name,
+		DNSName:   challenge.Spec.DNSName,
+		Namespace: challenge.Namespace,
+		Token:     challenge.Spec.Token,
+		Name:      challenge.Name,
+		UID:       challenge.UID,
+		Gateway:   namespacedGateway,
+	}
+	vsApply := VirtualServiceApplyFromChallengeMeta(cm)
+
+	// This controller is authoritative for these virtualservices so stomp any old versions that exist
+	return cs.networkingClient.VirtualServices(challenge.Namespace).Apply(context.TODO(), vsApply, metav1.ApplyOptions{Force: true})
+}
+
+func (cs *ChallengeSolver) Hash(in string) string {
+	return fmt.Sprintf("%d", adler32.Checksum([]byte(in)))
+}
+
+type ChallengeMeta struct {
+	Port      int32
+	Service   string
+	DNSName   string
+	Namespace string
+	Token     string
+	Name      string
+	UID       types.UID
+	Gateway   string
+}
+
+func VirtualServiceApplyFromChallengeMeta(cm ChallengeMeta) *netapplyv1beta1.VirtualServiceApplyConfiguration {
+
+	vsApply := netapplyv1beta1.VirtualServiceApplyConfiguration{
+		ObjectMetaApplyConfiguration: &netapplymetav1.ObjectMetaApplyConfiguration{},
+		Spec: &istiov1beta1.VirtualService{
+			Hosts:    []string{cm.DNSName},
+			Gateways: []string{cm.Gateway},
 			Http: []*istiov1beta1.HTTPRoute{
 				{
 					Name: "solver",
@@ -114,7 +156,7 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 						{
 							Uri: &istiov1beta1.StringMatch{
 								MatchType: &istiov1beta1.StringMatch_Exact{
-									Exact: fmt.Sprintf("/.well-known/acme-challenge/%s", challenge.Spec.Token),
+									Exact: fmt.Sprintf("/.well-known/acme-challenge/%s", cm.Token),
 								},
 							},
 						},
@@ -122,9 +164,9 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 					Route: []*istiov1beta1.HTTPRouteDestination{
 						{
 							Destination: &istiov1beta1.Destination{
-								Host: svc.Name,
+								Host: cm.Service,
 								Port: &istiov1beta1.PortSelector{
-									Number: port,
+									Number: uint32(cm.Port),
 								},
 							},
 						},
@@ -134,23 +176,16 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 		},
 	}
 
-	vs.Name = fmt.Sprintf("%s", challenge.Name)
-	vs.Namespace = challenge.Namespace
-	vs.ObjectMeta.OwnerReferences = append(vs.ObjectMeta.OwnerReferences, metav1.OwnerReference{
-		APIVersion: acmev1.SchemeGroupVersion.String(),
-		Kind:       "Challenge",
-		Name:       challenge.Name,
-		UID:        challenge.UID,
+	apiVersion := acmev1.SchemeGroupVersion.String()
+	kind := "Challenge"
+	vsApply.Namespace = &cm.Namespace
+	vsApply.Name = &cm.Name
+	vsApply.OwnerReferences = append(vsApply.OwnerReferences, netapplymetav1.OwnerReferenceApplyConfiguration{
+		APIVersion: &apiVersion,
+		Kind:       &kind,
+		Name:       &cm.Name,
+		UID:        &cm.UID,
 	})
 
-	vsb, _ := yaml.Marshal(vs)
-	fmt.Println(string(vsb))
-
-	_, err = cs.networkingClient.VirtualServices(challenge.Namespace).Create(context.TODO(), &vs, metav1.CreateOptions{})
-	if err != nil {
-		// requeue the request to wait for the service to appear in the api
-		return err
-
-	}
-	return nil
+	return &vsApply
 }
