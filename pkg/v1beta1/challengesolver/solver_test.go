@@ -68,6 +68,11 @@ func TestChallengeSolver(t *testing.T) {
 			pass:      false,
 		},
 		{
+			name:      "No Gateway",
+			challenge: getChallenge("noservice", "example", "noservice.com"),
+			pass:      false,
+		},
+		{
 			name:        "No Service",
 			challenge:   getChallenge("noservice", "example", "noservice.com"),
 			gatewayName: "gateway",
@@ -181,11 +186,6 @@ func getChallengeFunc(c *acmev1.Challenge) k8stesting.ReactionFunc {
 	}
 }
 
-func getChallengeFuncWithError(err error) k8stesting.ReactionFunc {
-	var chal *acmev1.Challenge
-	return getReactionFuncWithError(chal, err)
-}
-
 func getService(name, namespace, dnsName string, port int) corev1.Service {
 	svc := corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -206,16 +206,5 @@ func getService(name, namespace, dnsName string, port int) corev1.Service {
 func listServiceFunc(services ...corev1.Service) k8stesting.ReactionFunc {
 	return func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, &corev1.ServiceList{Items: services}, nil
-	}
-}
-
-func listServiceFuncWithError(err error) k8stesting.ReactionFunc {
-	var slist *corev1.ServiceList
-	return getReactionFuncWithError(slist, err)
-}
-
-func getReactionFuncWithError(obj runtime.Object, err error) k8stesting.ReactionFunc {
-	return func(action k8stesting.Action) (bool, runtime.Object, error) {
-		return true, obj, err
 	}
 }
