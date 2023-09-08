@@ -46,60 +46,7 @@ func (th *testHelper) newTestSolver() *challengesolver.ChallengeSolver {
 	return challengesolver.NewChallengeSolver(th.scs.CoreV1(), th.ics.NetworkingV1beta1(), th.ccs.AcmeV1(), th.glc)
 }
 
-func TestSolver(t *testing.T) {
-	/*
-		th := testHelper{
-			ics: istiofake.NewSimpleClientset(),
-			ccs: certmanagerfake.NewSimpleClientset(),
-			scs: k8sfake.NewSimpleClientset(),
-			glc: cache.New(),
-		}
-
-		th.ccs.AcmeV1().(*acmefake.FakeAcmeV1).PrependReactor(
-			"get",
-			"challenges",
-			func(action k8stesting.Action) (bool, runtime.Object, error) {
-				return true,
-					&acmev1.Challenge{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "testy",
-							Namespace: "example",
-							UID:       "12345",
-						},
-						Spec: acmev1.ChallengeSpec{
-							Token:   "testtoken",
-							DNSName: "thing.example.com",
-						},
-					}, nil
-			})
-
-		th.scs.CoreV1().(*corev1fake.FakeCoreV1).PrependReactor(
-			"list",
-			"services",
-			func(action k8stesting.Action) (bool, runtime.Object, error) {
-				return true,
-					&corev1.ServiceList{
-						Items: []corev1.Service{
-							{
-								ObjectMeta: metav1.ObjectMeta{
-									Name:      "testservice",
-									Namespace: "example",
-									Labels: map[string]string{
-										"acme.cert-manager.io/http-domain": fmt.Sprint(adler32.Checksum([]byte("thing.example.com"))),
-										"acme.cert-manager.io/http-token":  fmt.Sprint(adler32.Checksum([]byte("testtoken"))),
-									},
-								},
-								Spec: corev1.ServiceSpec{
-									Ports: []corev1.ServicePort{
-										{
-											Port: int32(8089),
-										},
-									}},
-							},
-						},
-					}, nil
-			})
-	*/
+func TestChallengeSolver(t *testing.T) {
 	for _, test := range []struct {
 		name           string
 		challenge      *acmev1.Challenge
@@ -130,7 +77,7 @@ func TestSolver(t *testing.T) {
 			name:        "No Service Port",
 			challenge:   getChallenge("noservice", "example", "noservice.com"),
 			gatewayName: "gateway",
-			service:     getService("service", "example", "service.com", 0),
+			service:     getService("noportservice", "example", "noportservice.com", 0),
 			pass:        false,
 		},
 		{
@@ -149,10 +96,14 @@ func TestSolver(t *testing.T) {
 			scs: k8sfake.NewSimpleClientset(),
 			glc: cache.New(),
 		}
-		th.scs.CoreV1().(*corev1fake.FakeCoreV1).PrependReactor(
-			"list",
-			"services",
-			listServiceFunc(test.service))
+
+		if test.service.Name != "" {
+			th.scs.CoreV1().(*corev1fake.FakeCoreV1).PrependReactor(
+				"list",
+				"services",
+				listServiceFunc(test.service))
+		}
+
 		th.ccs.AcmeV1().(*acmefake.FakeAcmeV1).PrependReactor(
 			"get",
 			"challenges",
@@ -160,7 +111,9 @@ func TestSolver(t *testing.T) {
 
 		if test.challenge != nil {
 
-			th.glc.Add(fmt.Sprintf("%s/%s", test.challenge.Namespace, test.gatewayName), test.challenge.Spec.DNSName)
+			if test.gatewayName != "" {
+				th.glc.Add(fmt.Sprintf("%s/%s", test.challenge.Namespace, test.gatewayName), test.challenge.Spec.DNSName)
+			}
 
 			vs := networkingv1beta1.VirtualService{}
 			vs.Name = test.challenge.Name
@@ -205,30 +158,7 @@ func TestSolver(t *testing.T) {
 			}
 		}
 
-	} /*
-		th.ics.NetworkingV1beta1().(*networkingv1beta1fake.FakeNetworkingV1beta1).PrependReactor(
-			"patch",
-			"virtualservices",
-			func(action k8stesting.Action) (bool, runtime.Object, error) {
-				return true,
-					&vs,
-					nil
-			})
-		cs := th.newTestSolver()
-
-		th.glc.Add("example/testgateway", "thing.example.com")
-
-		req := reconcile.Request{}
-		req.Namespace = "example"
-		req.Name = "testy"
-
-		ctx := klog.NewContext(context.Background(), zap.New(zap.Level(zapcore.DebugLevel)))
-		out, err := cs.Reconcile(ctx, req)
-
-		assert.NoError(t, err)
-		assert.NotNil(t, out)
-	*/
-
+	}
 }
 
 func getChallenge(name, namespace, dnsName string) *acmev1.Challenge {

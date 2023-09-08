@@ -32,7 +32,7 @@ type ChallengeSolver struct {
 	glc              *cache.GatewayLookupCache
 }
 
-func NewChallengeSolver(cc corev1.CoreV1Interface, nc networkingv1beta1Client.NetworkingV1beta1Interface, ac acmev1Client.AcmeV1Interface, glc *cache.GatewayLookupCache, opts ...OptionsFunc) *ChallengeSolver {
+func NewChallengeSolver(cc corev1.CoreV1Interface, nc networkingv1beta1Client.NetworkingV1beta1Interface, ac acmev1Client.AcmeV1Interface, glc *cache.GatewayLookupCache) *ChallengeSolver {
 	return &ChallengeSolver{
 		coreClient:       cc,
 		networkingClient: nc,
