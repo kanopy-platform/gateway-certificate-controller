@@ -9,6 +9,7 @@ import (
 	acmev1 "github.com/cert-manager/cert-manager/pkg/apis/acme/v1"
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/challengesolver"
+	corev1listers "k8s.io/client-go/listers/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/stretchr/testify/assert"
@@ -20,29 +21,28 @@ import (
 	networkingv1beta1fake "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1beta1/fake"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	k8sfake "k8s.io/client-go/kubernetes/fake"
-	corev1fake "k8s.io/client-go/kubernetes/typed/core/v1/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
 
 type testHelper struct {
 	ics *istiofake.Clientset
 	ccs *certmanagerfake.Clientset
-	scs *k8sfake.Clientset
+	scs *fakeServiceLister
 	glc *cache.GatewayLookupCache
 }
 
 func (th *testHelper) newTestSolver() *challengesolver.ChallengeSolver {
-	return challengesolver.NewChallengeSolver(th.scs.CoreV1(), th.ics.NetworkingV1beta1(), th.ccs, th.glc)
+	return challengesolver.NewChallengeSolver(th.scs, th.ics.NetworkingV1beta1(), th.ccs, th.glc)
 }
 
 func TestChallengeSolver(t *testing.T) {
 	for _, test := range []struct {
 		name           string
 		challenge      *acmev1.Challenge
-		service        corev1.Service
+		service        *corev1.Service
 		virtualService *networkingv1beta1.VirtualService
 		gatewayName    string
 		pass           bool
@@ -90,15 +90,8 @@ func TestChallengeSolver(t *testing.T) {
 		th := testHelper{
 			ics: istiofake.NewSimpleClientset(),
 			ccs: certmanagerfake.NewSimpleClientset(),
-			scs: k8sfake.NewSimpleClientset(),
+			scs: &fakeServiceLister{Service: test.service},
 			glc: cache.New(),
-		}
-
-		if test.service.Name != "" {
-			th.scs.CoreV1().(*corev1fake.FakeCoreV1).PrependReactor(
-				"list",
-				"services",
-				listServiceFunc(test.service))
 		}
 
 		th.ccs.AcmeV1().(*acmefake.FakeAcmeV1).PrependReactor(
@@ -180,7 +173,7 @@ func getChallengeFunc(c *acmev1.Challenge) k8stesting.ReactionFunc {
 	}
 }
 
-func getService(name, namespace, dnsName string, port int) corev1.Service {
+func getService(name, namespace, dnsName string, port int) *corev1.Service {
 	svc := corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -194,11 +187,31 @@ func getService(name, namespace, dnsName string, port int) corev1.Service {
 	if port != 0 {
 		svc.Spec.Ports = append(svc.Spec.Ports, corev1.ServicePort{Port: int32(port)})
 	}
-	return svc
+	return &svc
 }
 
-func listServiceFunc(services ...corev1.Service) k8stesting.ReactionFunc {
-	return func(action k8stesting.Action) (bool, runtime.Object, error) {
-		return true, &corev1.ServiceList{Items: services}, nil
+type fakeServiceLister struct {
+	Service *corev1.Service
+}
+
+func (fsl *fakeServiceLister) List(selector labels.Selector) ([]*corev1.Service, error) {
+	sl := []*corev1.Service{}
+	if fsl.Service != nil {
+		sl = append(sl, fsl.Service)
 	}
+	return sl, nil
+}
+
+func (fsl *fakeServiceLister) Services(namespace string) corev1listers.ServiceNamespaceLister {
+	return &stub{}
+}
+
+type stub struct{}
+
+func (s *stub) List(selector labels.Selector) ([]*corev1.Service, error) {
+	return []*corev1.Service{}, nil
+}
+
+func (s *stub) Get(name string) (*corev1.Service, error) {
+	return nil, nil
 }

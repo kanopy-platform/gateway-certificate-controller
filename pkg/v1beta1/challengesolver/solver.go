@@ -22,8 +22,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -35,14 +36,14 @@ import (
 )
 
 type ChallengeSolver struct {
-	coreClient        corev1.CoreV1Interface
+	coreClient        corev1listers.ServiceLister
 	networkingClient  networkingv1beta1Client.NetworkingV1beta1Interface
 	acmeClient        acmev1Client.AcmeV1Interface
 	certmanagerClient certmanagerversionedclient.Interface
 	glc               *cache.GatewayLookupCache
 }
 
-func NewChallengeSolver(cc corev1.CoreV1Interface, nc networkingv1beta1Client.NetworkingV1beta1Interface, cmc certmanagerversionedclient.Interface, glc *cache.GatewayLookupCache) *ChallengeSolver {
+func NewChallengeSolver(cc corev1listers.ServiceLister, nc networkingv1beta1Client.NetworkingV1beta1Interface, cmc certmanagerversionedclient.Interface, glc *cache.GatewayLookupCache) *ChallengeSolver {
 
 	cs := &ChallengeSolver{
 		coreClient:        cc,
@@ -145,21 +146,19 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 	}
 	log.V(1).Info(fmt.Sprintf("Debug: gateway found %s", namespacedGateway))
 
-	listOpts := metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s=%s,%s=%s", acmev1.DomainLabelKey, httpDomainHash, acmev1.TokenLabelKey, tokenHash),
-	}
+	svcSet := labels.Set(map[string]string{acmev1.DomainLabelKey: httpDomainHash, acmev1.TokenLabelKey: tokenHash})
 
-	serviceList, err := cs.coreClient.Services(challenge.Namespace).List(ctx, listOpts)
+	serviceList, err := cs.coreClient.List(svcSet.AsSelector())
 	if err != nil {
 		// requeue the request to wait for the service to appear in the api
 		return nil, err
 	}
 
-	if len(serviceList.Items) == 0 {
+	if len(serviceList) == 0 {
 		// requeue the request to wait for the service to appear in the api
 		return nil, fmt.Errorf("No service matched selector: %s", fmt.Sprintf("%s=%s,%s=%s", acmev1.DomainLabelKey, httpDomainHash, acmev1.TokenLabelKey, tokenHash))
 	}
-	svc := serviceList.Items[0]
+	svc := serviceList[0]
 
 	if len(svc.Spec.Ports) == 0 {
 		// this is probably unrecoverable
