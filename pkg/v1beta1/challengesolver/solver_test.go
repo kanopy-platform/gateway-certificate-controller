@@ -160,8 +160,7 @@ func TestChallengeSolver(t *testing.T) {
 
 			if test.noRequeue {
 				assert.False(t, resp.Requeue, test.name)
-			}
-			else {
+			} else {
 				assert.True(t, resp.Requeue, test.name)
 			}
 		}
