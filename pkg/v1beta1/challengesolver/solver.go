@@ -94,7 +94,7 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 		LabelSelector: fmt.Sprintf("%s=%s,%s=%s", acmev1.DomainLabelKey, httpDomainHash, acmev1.TokenLabelKey, tokenHash),
 	}
 
-	serviceList, err := cs.coreClient.Services(challenge.Namespace).List(context.TODO(), listOpts)
+	serviceList, err := cs.coreClient.Services(challenge.Namespace).List(ctx, listOpts)
 	if err != nil {
 		// requeue the request to wait for the service to appear in the api
 		return nil, err
@@ -124,7 +124,7 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 	vsApply := VirtualServiceApplyFromChallengeMeta(cm)
 
 	// This controller is authoritative for these virtualservices so stomp any old versions that exist
-	return cs.networkingClient.VirtualServices(challenge.Namespace).Apply(context.TODO(), vsApply, metav1.ApplyOptions{Force: true})
+	return cs.networkingClient.VirtualServices(challenge.Namespace).Apply(ctx, vsApply, metav1.ApplyOptions{Force: true})
 }
 
 func (cs *ChallengeSolver) Hash(in string) string {

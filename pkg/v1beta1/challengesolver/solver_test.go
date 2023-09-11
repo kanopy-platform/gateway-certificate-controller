@@ -87,7 +87,7 @@ func TestChallengeSolver(t *testing.T) {
 		},
 		{
 			name:        "Service",
-			challenge:   getChallenge("noservice", "example", "service.com"),
+			challenge:   getChallenge("service", "example", "service.com"),
 			gatewayName: "gateway",
 			service:     getService("service", "example", "service.com", 8888),
 			pass:        true,
@@ -160,6 +160,9 @@ func TestChallengeSolver(t *testing.T) {
 
 			if test.noRequeue {
 				assert.False(t, resp.Requeue, test.name)
+			}
+			else {
+				assert.True(t, resp.Requeue, test.name)
 			}
 		}
 
