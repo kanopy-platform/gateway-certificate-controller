@@ -42,13 +42,18 @@ type ChallengeSolver struct {
 	glc               *cache.GatewayLookupCache
 }
 
-func NewChallengeSolver(cc corev1.CoreV1Interface, nc networkingv1beta1Client.NetworkingV1beta1Interface, ac acmev1Client.AcmeV1Interface, glc *cache.GatewayLookupCache) *ChallengeSolver {
-	return &ChallengeSolver{
-		coreClient:       cc,
-		networkingClient: nc,
-		acmeClient:       ac,
-		glc:              glc,
+func NewChallengeSolver(cc corev1.CoreV1Interface, nc networkingv1beta1Client.NetworkingV1beta1Interface, cmc certmanagerversionedclient.Interface, glc *cache.GatewayLookupCache) *ChallengeSolver {
+
+	cs := &ChallengeSolver{
+		coreClient:        cc,
+		networkingClient:  nc,
+		glc:               glc,
+		certmanagerClient: cmc,
 	}
+
+	cs.acmeClient = cs.certmanagerClient.AcmeV1()
+
+	return cs
 }
 
 func (cs *ChallengeSolver) SetupWithManager(ctx context.Context, mgr manager.Manager) error {
@@ -62,9 +67,7 @@ func (cs *ChallengeSolver) SetupWithManager(ctx context.Context, mgr manager.Man
 		return err
 	}
 
-	certmanagerInformerFactory := certmanagerinformers.NewSharedInformerFactoryWithOptions(cs.certmanagerClient, time.Second*30, certmanagerinformers.WithTweakListOptions(func(listOptions *metav1.ListOptions) {
-		listOptions.LabelSelector = v1beta1labels.ManagedLabelSelector()
-	}))
+	certmanagerInformerFactory := certmanagerinformers.NewSharedInformerFactoryWithOptions(cs.certmanagerClient, time.Second*30)
 
 	if err := ctrl.Watch(&source.Informer{Informer: certmanagerInformerFactory.Certmanager().V1().Certificates().Informer()},
 		handler.Funcs{

@@ -27,14 +27,6 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 )
 
-func TestStub(t *testing.T) {
-	t.Parallel()
-
-	glc := cache.New()
-
-	assert.NotNil(t, glc)
-}
-
 type testHelper struct {
 	ics *istiofake.Clientset
 	ccs *certmanagerfake.Clientset
@@ -43,7 +35,7 @@ type testHelper struct {
 }
 
 func (th *testHelper) newTestSolver() *challengesolver.ChallengeSolver {
-	return challengesolver.NewChallengeSolver(th.scs.CoreV1(), th.ics.NetworkingV1beta1(), th.ccs.AcmeV1(), th.glc)
+	return challengesolver.NewChallengeSolver(th.scs.CoreV1(), th.ics.NetworkingV1beta1(), th.ccs, th.glc)
 }
 
 func TestChallengeSolver(t *testing.T) {
