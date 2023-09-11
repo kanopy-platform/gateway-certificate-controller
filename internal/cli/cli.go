@@ -8,6 +8,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	// import oidc auth
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
+	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/challengesolver"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 	k8scache "k8s.io/client-go/tools/cache"
@@ -28,8 +29,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	k8sinformers "k8s.io/client-go/informers"
-	corev1informers "k8s.io/client-go/informers/core/v1"
-	corev1listers "k8s.io/client-go/listers/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	klog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -186,27 +185,37 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 
 	edc.SetEnabled(externalDNSEnabled)
 
-	var clientset *kubernetes.Clientset
-	var k8sInformerFactory k8sinformers.SharedInformerFactory
-	var nsInformer corev1informers.NamespaceInformer
-	var nsl corev1listers.NamespaceLister
-	if externalDNSEnabled {
-		clientset, err = kubernetes.NewForConfig(cfg)
-		if err != nil {
-			return err
-		}
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return err
+	}
 
-		k8sInformerFactory = k8sinformers.NewSharedInformerFactoryWithOptions(clientset, time.Second*30)
-		nsInformer = k8sInformerFactory.Core().V1().Namespaces()
+	k8sInformerFactory := k8sinformers.NewSharedInformerFactoryWithOptions(clientset, time.Second*30)
 
-		//need at least one listener func to populate the in memory cache
-		nsInformer.Informer().AddEventHandler(k8scache.ResourceEventHandlerFuncs{
-			AddFunc: func(new interface{}) {},
-		})
+	nsInformer := k8sInformerFactory.Core().V1().Namespaces()
 
-		k8sInformerFactory.Start(wait.NeverStop)
-		k8sInformerFactory.WaitForCacheSync(wait.NeverStop)
-		nsl = nsInformer.Lister()
+	//need at least one listener func to populate the in memory cache
+	nsInformer.Informer().AddEventHandler(k8scache.ResourceEventHandlerFuncs{
+		AddFunc: func(new interface{}) {},
+	})
+
+	coreV1Informer := k8sInformerFactory.Core().V1()
+
+	coreV1Informer.Services().Informer().AddEventHandler(k8scache.ResourceEventHandlerFuncs{
+		AddFunc: func(new interface{}) {},
+	})
+
+	k8sInformerFactory.Start(wait.NeverStop)
+	k8sInformerFactory.WaitForCacheSync(wait.NeverStop)
+
+	nsl := nsInformer.Lister()
+	serviceLister := coreV1Informer.Services().Lister()
+
+	cs := challengesolver.NewChallengeSolver(serviceLister, ic.NetworkingV1beta1(), cmc, glc)
+
+	err = cs.SetupWithManager(ctx, mgr)
+	if err != nil {
+		return err
 	}
 
 	admission.NewGatewayMutationHook(
