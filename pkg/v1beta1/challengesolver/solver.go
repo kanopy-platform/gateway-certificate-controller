@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"hash/adler32"
+	"time"
 
 	acmev1 "github.com/cert-manager/cert-manager/pkg/apis/acme/v1"
+	certmanagerversionedclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	acmev1Client "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/typed/acme/v1"
+	certmanagerinformers "github.com/cert-manager/cert-manager/pkg/client/informers/externalversions"
 
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
 
@@ -21,15 +24,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/util/workqueue"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 type ChallengeSolver struct {
-	coreClient       corev1.CoreV1Interface
-	networkingClient networkingv1beta1Client.NetworkingV1beta1Interface
-	acmeClient       acmev1Client.AcmeV1Interface
-	glc              *cache.GatewayLookupCache
+	coreClient        corev1.CoreV1Interface
+	networkingClient  networkingv1beta1Client.NetworkingV1beta1Interface
+	acmeClient        acmev1Client.AcmeV1Interface
+	certmanagerClient certmanagerversionedclient.Interface
+	glc               *cache.GatewayLookupCache
 }
 
 func NewChallengeSolver(cc corev1.CoreV1Interface, nc networkingv1beta1Client.NetworkingV1beta1Interface, ac acmev1Client.AcmeV1Interface, glc *cache.GatewayLookupCache) *ChallengeSolver {
@@ -39,6 +49,48 @@ func NewChallengeSolver(cc corev1.CoreV1Interface, nc networkingv1beta1Client.Ne
 		acmeClient:       ac,
 		glc:              glc,
 	}
+}
+
+func (cs *ChallengeSolver) SetupWithManager(ctx context.Context, mgr manager.Manager) error {
+
+	ctrl, err := controller.New("challengesolver", mgr, controller.Options{
+		Reconciler:  cs,
+		RateLimiter: workqueue.NewItemExponentialFailureRateLimiter(time.Second, 1000*time.Second),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	certmanagerInformerFactory := certmanagerinformers.NewSharedInformerFactoryWithOptions(cs.certmanagerClient, time.Second*30, certmanagerinformers.WithTweakListOptions(func(listOptions *metav1.ListOptions) {
+		listOptions.LabelSelector = v1beta1labels.ManagedLabelSelector()
+	}))
+
+	if err := ctrl.Watch(&source.Informer{Informer: certmanagerInformerFactory.Certmanager().V1().Certificates().Informer()},
+		handler.Funcs{
+			// only handle Update so that Deleting a certificate does not trigger another Reconcile
+			// Create will also trigger an Update
+			UpdateFunc: updateFunc,
+			CreateFunc: createFunc,
+		}); err != nil {
+		return err
+	}
+	return nil
+
+}
+
+func updateFunc(e event.UpdateEvent, q workqueue.RateLimitingInterface) {
+	q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+		Name:      e.ObjectNew.GetName(),
+		Namespace: e.ObjectNew.GetNamespace(),
+	}})
+}
+
+func createFunc(e event.CreateEvent, q workqueue.RateLimitingInterface) {
+	q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+		Name:      e.Object.GetName(),
+		Namespace: e.Object.GetNamespace(),
+	}})
 }
 
 func (cs *ChallengeSolver) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
