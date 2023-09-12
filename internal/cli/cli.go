@@ -64,6 +64,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().Int("webhook-listen-port", 8443, "Admission webhook listen port")
 	cmd.PersistentFlags().Int("metrics-listen-port", 8081, "Admission webhook listen port")
 	cmd.PersistentFlags().String("webhook-certs-dir", "/etc/webhook/certs", "Admission webhook TLS certificate directory")
+	cmd.PersistentFlags().Bool("challenge-solver", false, "Enable virtal service challenge solver support")
 	cmd.PersistentFlags().Bool("external-dns", false, "Enable external-dns mutation support")
 	cmd.PersistentFlags().String("external-dns-target", "", "Set or delete value for the external-dns target annotation, implies --external-dns, default: delete")
 	cmd.PersistentFlags().String("external-dns-selector", "", "Annotation key=value selector string to use for excluding namespace from mutation, implies --external-dns, default: ingress-whitelist=*")
@@ -211,11 +212,13 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	nsl := nsInformer.Lister()
 	serviceLister := coreV1Informer.Services().Lister()
 
-	cs := challengesolver.NewChallengeSolver(serviceLister, ic.NetworkingV1beta1(), cmc, glc)
+	if viper.GetBool("challenge-solver") {
+		cs := challengesolver.NewChallengeSolver(serviceLister, ic.NetworkingV1beta1(), cmc, glc)
 
-	err = cs.SetupWithManager(ctx, mgr)
-	if err != nil {
-		return err
+		err = cs.SetupWithManager(ctx, mgr)
+		if err != nil {
+			return err
+		}
 	}
 
 	admission.NewGatewayMutationHook(
