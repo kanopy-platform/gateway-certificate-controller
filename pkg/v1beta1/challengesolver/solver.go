@@ -24,10 +24,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -58,6 +58,9 @@ func NewChallengeSolver(cc corev1listers.ServiceLister, nc networkingv1beta1Clie
 }
 
 func (cs *ChallengeSolver) SetupWithManager(ctx context.Context, mgr manager.Manager) error {
+	log := log.FromContext(ctx)
+
+	log.Info("Registering controller with Mmanager")
 
 	ctrl, err := controller.New("challengesolver", mgr, controller.Options{
 		Reconciler:  cs,
@@ -69,32 +72,15 @@ func (cs *ChallengeSolver) SetupWithManager(ctx context.Context, mgr manager.Man
 	}
 
 	certmanagerInformerFactory := certmanagerinformers.NewSharedInformerFactoryWithOptions(cs.certmanagerClient, time.Second*30)
-
-	if err := ctrl.Watch(&source.Informer{Informer: certmanagerInformerFactory.Certmanager().V1().Certificates().Informer()},
-		handler.Funcs{
-			// only handle Update so that Deleting a certificate does not trigger another Reconcile
-			// Create will also trigger an Update
-			UpdateFunc: updateFunc,
-			CreateFunc: createFunc,
-		}); err != nil {
+	if err := ctrl.Watch(&source.Informer{Informer: certmanagerInformerFactory.Acme().V1().Challenges().Informer()},
+		&handler.EnqueueRequestForObject{}); err != nil {
 		return err
 	}
+
+	certmanagerInformerFactory.Start(wait.NeverStop)
+	certmanagerInformerFactory.WaitForCacheSync(wait.NeverStop)
 	return nil
 
-}
-
-func updateFunc(e event.UpdateEvent, q workqueue.RateLimitingInterface) {
-	q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
-		Name:      e.ObjectNew.GetName(),
-		Namespace: e.ObjectNew.GetNamespace(),
-	}})
-}
-
-func createFunc(e event.CreateEvent, q workqueue.RateLimitingInterface) {
-	q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
-		Name:      e.Object.GetName(),
-		Namespace: e.Object.GetNamespace(),
-	}})
 }
 
 func (cs *ChallengeSolver) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
@@ -178,7 +164,7 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 	vsApply := VirtualServiceApplyFromChallengeMeta(cm)
 
 	// This controller is authoritative for these virtualservices so stomp any old versions that exist
-	return cs.networkingClient.VirtualServices(challenge.Namespace).Apply(ctx, vsApply, metav1.ApplyOptions{Force: true})
+	return cs.networkingClient.VirtualServices(challenge.Namespace).Apply(ctx, vsApply, metav1.ApplyOptions{Force: true, FieldManager: "challengesolver"})
 }
 
 func (cs *ChallengeSolver) Hash(in string) string {
@@ -197,6 +183,9 @@ type ChallengeMeta struct {
 }
 
 func VirtualServiceApplyFromChallengeMeta(cm ChallengeMeta) *netapplyv1beta1.VirtualServiceApplyConfiguration {
+
+	vsAPIVersion := apinetv1beta1.SchemeGroupVersion.String()
+	vsKind := "VirtualService"
 
 	vsApply := netapplyv1beta1.VirtualServiceApplyConfiguration{
 		ObjectMetaApplyConfiguration: &netapplymetav1.ObjectMetaApplyConfiguration{},
@@ -229,6 +218,9 @@ func VirtualServiceApplyFromChallengeMeta(cm ChallengeMeta) *netapplyv1beta1.Vir
 			},
 		},
 	}
+
+	vsApply.APIVersion = &vsAPIVersion
+	vsApply.Kind = &vsKind
 
 	apiVersion := acmev1.SchemeGroupVersion.String()
 	kind := "Challenge"
