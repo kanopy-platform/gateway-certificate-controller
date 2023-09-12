@@ -41,9 +41,10 @@ type ChallengeSolver struct {
 	acmeClient        acmev1Client.AcmeV1Interface
 	certmanagerClient certmanagerversionedclient.Interface
 	glc               *cache.GatewayLookupCache
+	dryRun            bool
 }
 
-func NewChallengeSolver(cc corev1listers.ServiceLister, nc networkingv1beta1Client.NetworkingV1beta1Interface, cmc certmanagerversionedclient.Interface, glc *cache.GatewayLookupCache) *ChallengeSolver {
+func NewChallengeSolver(cc corev1listers.ServiceLister, nc networkingv1beta1Client.NetworkingV1beta1Interface, cmc certmanagerversionedclient.Interface, glc *cache.GatewayLookupCache, opts ...OptionsFunc) *ChallengeSolver {
 
 	cs := &ChallengeSolver{
 		coreClient:        cc,
@@ -53,6 +54,10 @@ func NewChallengeSolver(cc corev1listers.ServiceLister, nc networkingv1beta1Clie
 	}
 
 	cs.acmeClient = cs.certmanagerClient.AcmeV1()
+
+	for _, opt := range opts {
+		opt(cs)
+	}
 
 	return cs
 }
@@ -164,6 +169,11 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 	vsApply := VirtualServiceApplyFromChallengeMeta(cm)
 
 	// This controller is authoritative for these virtualservices so stomp any old versions that exist
+	if cs.dryRun {
+		log.Info(fmt.Sprintf("dry-run: patching %s.%s %s/%s", *vsApply.Kind, *vsApply.APIVersion, *vsApply.Namespace, *vsApply.Name))
+		return nil, nil
+	}
+
 	return cs.networkingClient.VirtualServices(challenge.Namespace).Apply(ctx, vsApply, metav1.ApplyOptions{Force: true, FieldManager: "challengesolver"})
 }
 
