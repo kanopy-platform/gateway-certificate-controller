@@ -213,7 +213,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	serviceLister := coreV1Informer.Services().Lister()
 
 	if viper.GetBool("challenge-solver") {
-		cs := challengesolver.NewChallengeSolver(serviceLister, ic.NetworkingV1beta1(), cmc, glc)
+		cs := challengesolver.NewChallengeSolver(serviceLister, ic.NetworkingV1beta1(), cmc, glc, challengesolver.WithDryRun(dryRun))
 
 		err = cs.SetupWithManager(ctx, mgr)
 		if err != nil {
