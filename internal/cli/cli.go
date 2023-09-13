@@ -71,6 +71,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().Bool("dry-run", false, "Controller dry-run changes only")
 	cmd.PersistentFlags().String("certificate-namespace", "cert-manager", "Namespace that stores Certificates")
 	cmd.PersistentFlags().String("default-issuer", "selfsigned", "The default ClusterIssuer")
+	cmd.PersistentFlags().String("http-solver-label", "use-istio-http01-solver", "The cert-manager http01 solver selector label to apply to Certificates")
 
 	k8sFlags.AddFlags(cmd.PersistentFlags())
 	// no need to check err, this only checks if variadic args != 0
@@ -151,7 +152,8 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		v1beta1controllers.WithDryRun(viper.GetBool("dry-run")),
 		v1beta1controllers.WithDefaultClusterIssuer(viper.GetString("default-issuer")),
 		v1beta1controllers.WithCertificateNamespace(viper.GetString("certificate-namespace")),
-		v1beta1controllers.WithGatewayLookupCache(glc)).
+		v1beta1controllers.WithGatewayLookupCache(glc),
+		v1beta1controllers.WithSolverLabel(viper.GetString("http-solver-label"))).
 		SetupWithManager(ctx, mgr); err != nil {
 		return err
 	}

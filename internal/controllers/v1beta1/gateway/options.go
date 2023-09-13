@@ -31,3 +31,9 @@ func WithGatewayLookupCache(glc *cache.GatewayLookupCache) OptionsFunc {
 		gc.gatewayLookupCache = glc
 	}
 }
+
+func WithHTTPSolverLabel(l string) OptionsFunc {
+	return func(gc *GatewayController) {
+		gc.httpSolverLabel = l
+	}
+}

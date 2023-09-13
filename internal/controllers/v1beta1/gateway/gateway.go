@@ -49,6 +49,7 @@ type GatewayController struct {
 	clusterIssuer        string
 	gatewayLookupCache   *cache.GatewayLookupCache
 	certHandler          certificateHandler
+	httpSolverLabel      string
 }
 
 func NewGatewayController(istioClient istioversionedclient.Interface, certClient certmanagerclient.Interface, opts ...OptionsFunc) *GatewayController {
@@ -186,6 +187,10 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 		cert.ObjectMeta.Annotations[v1certmanager.IssueTemporaryCertificateAnnotation] = "true"
 	}
 
+	if b, ok := gateway.Annotations[v1beta1labels.HTTPSolverAnnotation]; ok && b == "true" {
+		cert.ObjectMeta.Labels[c.httpSolverLabel] = "true"
+	}
+
 	createOptions := metav1.CreateOptions{FieldManager: FieldManager}
 	if c.dryRun {
 		log.Info("[dryrun] create certificate", "cert", cert)
@@ -214,13 +219,13 @@ func (c *GatewayController) UpdateCertificate(ctx context.Context, cert *v1certm
 
 	cert, updatedIssuer := updateCertificateIssuer(ctx, cert, gateway)
 	cert, updatedDNSNames := updateCertificateDNSNames(ctx, cert, server)
+	cert, updatedHTTPSolver := updateHTTPSolver(ctx, cert, gateway, c.httpSolverLabel)
 
-	if updatedDNSNames || updatedIssuer {
+	if updatedDNSNames || updatedIssuer || updatedHTTPSolver {
 		log.V(1).Info("pre-update", "cert", cert)
 
 		updateOptions := metav1.UpdateOptions{FieldManager: FieldManager}
 		if c.dryRun {
-			fmt.Println("DRY RUN UPDATE ", cert)
 			log.Info("[dryrun] update certificate", "cert", cert)
 			updateOptions.DryRun = []string{metav1.DryRunAll}
 		}
@@ -234,7 +239,35 @@ func (c *GatewayController) UpdateCertificate(ctx context.Context, cert *v1certm
 
 	return nil
 }
+func updateHTTPSolver(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1beta1.Gateway, label string) (*v1certmanager.Certificate, bool) {
+	log := log.FromContext(ctx)
 
+	if h, ok := gateway.Annotations[v1beta1labels.HTTPSolverAnnotation]; ok && h == "true" {
+		if cert.Labels == nil {
+			log.Info("Adding http solver label to cert")
+			cert.Labels = map[string]string{label: "true"}
+			return cert, true
+		}
+		if l, ok := cert.Labels[label]; ok && l != "true" {
+			log.Info("Adding http solver label to cert")
+			cert.Labels[label] = "true"
+			return cert, true
+		}
+	}
+
+	if cert.Labels == nil {
+		return cert, false
+	}
+
+	if l, ok := cert.Labels[label]; ok && l == "true" {
+		log.Info("Removing http solver label from cert")
+		delete(cert.Labels, label)
+		return cert, true
+	}
+
+	return cert, false
+
+}
 func updateCertificateIssuer(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1beta1.Gateway) (*v1certmanager.Certificate, bool) {
 	log := log.FromContext(ctx)
 	issuer := cert.Spec.IssuerRef.Name
