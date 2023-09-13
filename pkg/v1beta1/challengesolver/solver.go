@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"hash/adler32"
+	"time"
 
 	acmev1 "github.com/cert-manager/cert-manager/pkg/apis/acme/v1"
+	certmanagerversionedclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	acmev1Client "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/typed/acme/v1"
+	certmanagerinformers "github.com/cert-manager/cert-manager/pkg/client/informers/externalversions"
 
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
 
@@ -19,26 +22,70 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
+	corev1listers "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/util/workqueue"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 type ChallengeSolver struct {
-	coreClient       corev1.CoreV1Interface
-	networkingClient networkingv1beta1Client.NetworkingV1beta1Interface
-	acmeClient       acmev1Client.AcmeV1Interface
-	glc              *cache.GatewayLookupCache
+	coreClient        corev1listers.ServiceLister
+	networkingClient  networkingv1beta1Client.NetworkingV1beta1Interface
+	acmeClient        acmev1Client.AcmeV1Interface
+	certmanagerClient certmanagerversionedclient.Interface
+	glc               *cache.GatewayLookupCache
+	dryRun            bool
 }
 
-func NewChallengeSolver(cc corev1.CoreV1Interface, nc networkingv1beta1Client.NetworkingV1beta1Interface, ac acmev1Client.AcmeV1Interface, glc *cache.GatewayLookupCache) *ChallengeSolver {
-	return &ChallengeSolver{
-		coreClient:       cc,
-		networkingClient: nc,
-		acmeClient:       ac,
-		glc:              glc,
+func NewChallengeSolver(cc corev1listers.ServiceLister, nc networkingv1beta1Client.NetworkingV1beta1Interface, cmc certmanagerversionedclient.Interface, glc *cache.GatewayLookupCache, opts ...OptionsFunc) *ChallengeSolver {
+
+	cs := &ChallengeSolver{
+		coreClient:        cc,
+		networkingClient:  nc,
+		glc:               glc,
+		certmanagerClient: cmc,
 	}
+
+	cs.acmeClient = cs.certmanagerClient.AcmeV1()
+
+	for _, opt := range opts {
+		opt(cs)
+	}
+
+	return cs
+}
+
+func (cs *ChallengeSolver) SetupWithManager(ctx context.Context, mgr manager.Manager) error {
+	log := log.FromContext(ctx)
+
+	log.Info("Registering controller with Mmanager")
+
+	ctrl, err := controller.New("challengesolver", mgr, controller.Options{
+		Reconciler:  cs,
+		RateLimiter: workqueue.NewItemExponentialFailureRateLimiter(time.Second, 1000*time.Second),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	certmanagerInformerFactory := certmanagerinformers.NewSharedInformerFactoryWithOptions(cs.certmanagerClient, time.Second*30)
+	if err := ctrl.Watch(&source.Informer{Informer: certmanagerInformerFactory.Acme().V1().Challenges().Informer()},
+		&handler.EnqueueRequestForObject{}); err != nil {
+		return err
+	}
+
+	certmanagerInformerFactory.Start(wait.NeverStop)
+	certmanagerInformerFactory.WaitForCacheSync(wait.NeverStop)
+	return nil
+
 }
 
 func (cs *ChallengeSolver) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
@@ -90,21 +137,19 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 	}
 	log.V(1).Info(fmt.Sprintf("Debug: gateway found %s", namespacedGateway))
 
-	listOpts := metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s=%s,%s=%s", acmev1.DomainLabelKey, httpDomainHash, acmev1.TokenLabelKey, tokenHash),
-	}
+	svcSet := labels.Set(map[string]string{acmev1.DomainLabelKey: httpDomainHash, acmev1.TokenLabelKey: tokenHash})
 
-	serviceList, err := cs.coreClient.Services(challenge.Namespace).List(ctx, listOpts)
+	serviceList, err := cs.coreClient.List(svcSet.AsSelector())
 	if err != nil {
 		// requeue the request to wait for the service to appear in the api
 		return nil, err
 	}
 
-	if len(serviceList.Items) == 0 {
+	if len(serviceList) == 0 {
 		// requeue the request to wait for the service to appear in the api
 		return nil, fmt.Errorf("No service matched selector: %s", fmt.Sprintf("%s=%s,%s=%s", acmev1.DomainLabelKey, httpDomainHash, acmev1.TokenLabelKey, tokenHash))
 	}
-	svc := serviceList.Items[0]
+	svc := serviceList[0]
 
 	if len(svc.Spec.Ports) == 0 {
 		// this is probably unrecoverable
@@ -124,7 +169,12 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 	vsApply := VirtualServiceApplyFromChallengeMeta(cm)
 
 	// This controller is authoritative for these virtualservices so stomp any old versions that exist
-	return cs.networkingClient.VirtualServices(challenge.Namespace).Apply(ctx, vsApply, metav1.ApplyOptions{Force: true})
+	if cs.dryRun {
+		log.Info(fmt.Sprintf("dry-run: patching %s.%s %s/%s", *vsApply.Kind, *vsApply.APIVersion, *vsApply.Namespace, *vsApply.Name))
+		return nil, nil
+	}
+
+	return cs.networkingClient.VirtualServices(challenge.Namespace).Apply(ctx, vsApply, metav1.ApplyOptions{Force: true, FieldManager: "challengesolver"})
 }
 
 func (cs *ChallengeSolver) Hash(in string) string {
@@ -143,6 +193,9 @@ type ChallengeMeta struct {
 }
 
 func VirtualServiceApplyFromChallengeMeta(cm ChallengeMeta) *netapplyv1beta1.VirtualServiceApplyConfiguration {
+
+	vsAPIVersion := apinetv1beta1.SchemeGroupVersion.String()
+	vsKind := "VirtualService"
 
 	vsApply := netapplyv1beta1.VirtualServiceApplyConfiguration{
 		ObjectMetaApplyConfiguration: &netapplymetav1.ObjectMetaApplyConfiguration{},
@@ -175,6 +228,9 @@ func VirtualServiceApplyFromChallengeMeta(cm ChallengeMeta) *netapplyv1beta1.Vir
 			},
 		},
 	}
+
+	vsApply.APIVersion = &vsAPIVersion
+	vsApply.Kind = &vsKind
 
 	apiVersion := acmev1.SchemeGroupVersion.String()
 	kind := "Challenge"

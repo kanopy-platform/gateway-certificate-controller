@@ -6,11 +6,18 @@ metadata:
 rules:
 - apiGroups: [""]
   resources:
-  -  namespaces
+  - namespaces
+  - services
   verbs:
   - list
   - get
   - watch
+- apiGroups:
+  - networking.istio.io
+  resources:
+  - virtualservices
+  verbs:
+  - "*"
 - apiGroups:
   - networking.istio.io
   resources:
@@ -25,6 +32,14 @@ rules:
   - cert-manager.io
   resources:
   - certificates
+  verbs:
+  - list
+  - get
+  - watch
+- apiGroups:
+  - acme.cert-manager.io
+  resources:
+  - challenges
   verbs:
   - list
   - get

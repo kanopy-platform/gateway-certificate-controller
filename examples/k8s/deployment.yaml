@@ -50,6 +50,7 @@ spec:
             - "--certificate-namespace=routing"
             - "--log-level=debug"
             - "--external-dns-target=overthere"
+            - "--challenge-solver"
           imagePullPolicy: Always
           volumeMounts:
             - name: webhook-certs
