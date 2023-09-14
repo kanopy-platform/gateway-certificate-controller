@@ -424,6 +424,39 @@ func TestGatewayReconcile_UpdatesCertificateWithSolver(t *testing.T) {
 	assert.Equal(t, "true", l)
 }
 
+func TestGatewayReconcile_DeleteCertificateSolver(t *testing.T) {
+	helper := NewTestHelperWithGateways(AppendCertificates(
+		&v1certmanager.Certificate{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Certificate",
+				APIVersion: "cert-manager.io/v1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      TestCertificateName,
+				Namespace: TestCertNamespace,
+				Labels: map[string]string{
+					"use-istio-http01-solver": "true",
+				},
+			},
+			Spec: v1certmanager.CertificateSpec{
+				DNSNames: []string{"test1.example.com", "test2.example.com"},
+				IssuerRef: v1.ObjectReference{
+					Kind:  "ClusterIssuer",
+					Name:  "default",
+					Group: "cert-manager.io",
+				},
+			},
+		},
+	))
+	assertCertificateUpdated(t, helper)
+	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
+	assert.NoError(t, err)
+
+	l, ok := cert.Labels["use-istio-http01-solver"]
+	assert.False(t, ok)
+	assert.Equal(t, "", l)
+}
+
 func TestGatewayReconcile_UpdateCertificateNoOp(t *testing.T) {
 	t.Parallel()
 	helper := NewTestHelperWithCertificates()

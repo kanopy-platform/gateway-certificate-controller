@@ -190,7 +190,6 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 	if b, ok := gateway.Annotations[v1beta1labels.HTTPSolverAnnotation]; ok && b == "true" {
 		cert.ObjectMeta.Labels[c.httpSolverLabel] = "true"
 	}
-
 	createOptions := metav1.CreateOptions{FieldManager: FieldManager}
 	if c.dryRun {
 		log.Info("[dryrun] create certificate", "cert", cert)
@@ -244,23 +243,18 @@ func updateHTTPSolver(ctx context.Context, cert *v1certmanager.Certificate, gate
 
 	if h, ok := gateway.Annotations[v1beta1labels.HTTPSolverAnnotation]; ok && h == "true" {
 		if cert.Labels == nil {
-			log.Info("Adding http solver label to cert")
-			cert.Labels = map[string]string{label: "true"}
-			return cert, true
+			cert.Labels = map[string]string{}
 		}
-		if l, ok := cert.Labels[label]; ok && l != "true" {
-			log.Info("Adding http solver label to cert")
+
+		if l, ok := cert.Labels[label]; !ok || (ok && l != "true") {
+			log.V(1).Info("Adding http solver label to cert")
 			cert.Labels[label] = "true"
 			return cert, true
 		}
 	}
 
-	if cert.Labels == nil {
-		return cert, false
-	}
-
 	if l, ok := cert.Labels[label]; ok && l == "true" {
-		log.Info("Removing http solver label from cert")
+		log.V(1).Info("Removing http solver label from cert")
 		delete(cert.Labels, label)
 		return cert, true
 	}
