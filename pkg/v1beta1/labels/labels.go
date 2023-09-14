@@ -17,6 +17,7 @@ var (
 	IssuerAnnotation                    = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-issuer")
 	ManagedLabel                        = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-managed")
 	IssueTemporaryCertificateAnnotation = fmt.Sprintf("%s/%s", version.String(), IssueTemporaryCertificate)
+	HTTPSolverAnnotation                = fmt.Sprintf("%s/%s", version.String(), HTTP01)
 )
 
 const (
@@ -34,6 +35,9 @@ const (
 
 	//DefaultGatewayAllowListAnnotationOverrideValue the default value for the label controlling external-dns mutation opt out
 	DefaultGatewayAllowListAnnotationOverrideValue = "*"
+
+	//HTTP01
+	HTTP01 = "http01"
 )
 
 func InjectSimpleCredentialNameLabelSelector() string {

@@ -218,7 +218,7 @@ func NewTestHelperWithCertificates(opts ...func(*GatewayOptions)) *TestHelper {
 
 func setupControllerWithSpy(cs *istiofake.Clientset, certFake *certmanagerfake.Clientset, opts *GatewayOptions) *controllerSpy {
 	spy := &controllerSpy{
-		GatewayController: NewGatewayController(cs, certFake, WithDryRun(opts.DryRun), WithCertificateNamespace(TestCertNamespace), WithGatewayLookupCache(opts.GatewayLookupCache)),
+		GatewayController: NewGatewayController(cs, certFake, WithDryRun(opts.DryRun), WithCertificateNamespace(TestCertNamespace), WithGatewayLookupCache(opts.GatewayLookupCache), WithHTTPSolverLabel("use-istio-http01-solver")),
 	}
 	spy.GatewayController.certHandler = spy
 	return spy
@@ -411,6 +411,50 @@ func TestGatewayReconcile_UpdatesCertificateWithNewIssuer(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "new", cert.Spec.IssuerRef.Name)
 	assert.Equal(t, "ClusterIssuer", cert.Spec.IssuerRef.Kind)
+}
+
+func TestGatewayReconcile_UpdatesCertificateWithSolver(t *testing.T) {
+	helper := NewTestHelperWithCertificates(WithAnnotations(map[string]string{v1beta1labels.HTTPSolverAnnotation: "true"}))
+	assertCertificateUpdated(t, helper)
+	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
+	assert.NoError(t, err)
+
+	l, ok := cert.Labels["use-istio-http01-solver"]
+	assert.True(t, ok)
+	assert.Equal(t, "true", l)
+}
+
+func TestGatewayReconcile_DeleteCertificateSolver(t *testing.T) {
+	helper := NewTestHelperWithGateways(AppendCertificates(
+		&v1certmanager.Certificate{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Certificate",
+				APIVersion: "cert-manager.io/v1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      TestCertificateName,
+				Namespace: TestCertNamespace,
+				Labels: map[string]string{
+					"use-istio-http01-solver": "true",
+				},
+			},
+			Spec: v1certmanager.CertificateSpec{
+				DNSNames: []string{"test1.example.com", "test2.example.com"},
+				IssuerRef: v1.ObjectReference{
+					Kind:  "ClusterIssuer",
+					Name:  "default",
+					Group: "cert-manager.io",
+				},
+			},
+		},
+	))
+	assertCertificateUpdated(t, helper)
+	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
+	assert.NoError(t, err)
+
+	l, ok := cert.Labels["use-istio-http01-solver"]
+	assert.False(t, ok)
+	assert.Equal(t, "", l)
 }
 
 func TestGatewayReconcile_UpdateCertificateNoOp(t *testing.T) {
