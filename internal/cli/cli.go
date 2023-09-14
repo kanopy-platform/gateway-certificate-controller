@@ -153,7 +153,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		v1beta1controllers.WithDefaultClusterIssuer(viper.GetString("default-issuer")),
 		v1beta1controllers.WithCertificateNamespace(viper.GetString("certificate-namespace")),
 		v1beta1controllers.WithGatewayLookupCache(glc),
-		v1beta1controllers.WithSolverLabel(viper.GetString("http-solver-label"))).
+		v1beta1controllers.WithHTTPSolverLabel(viper.GetString("http-solver-label"))).
 		SetupWithManager(ctx, mgr); err != nil {
 		return err
 	}
