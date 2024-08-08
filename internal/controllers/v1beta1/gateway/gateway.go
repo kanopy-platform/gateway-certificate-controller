@@ -250,6 +250,8 @@ func updateHTTPSolver(ctx context.Context, cert *v1certmanager.Certificate, gate
 			log.V(1).Info("Adding http solver label to cert")
 			cert.Labels[label] = "true"
 			return cert, true
+		} else {
+			return cert, false
 		}
 	}
 
