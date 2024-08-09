@@ -479,3 +479,26 @@ func TestGatewayReconcile_SkipGatewayWithoutLabel(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, cert)
 }
+
+func TestHTTPSolverLabelIdempotency(t *testing.T) {
+	t.Parallel()
+	cert := &v1certmanager.Certificate{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{},
+		},
+	}
+	gw := &v1beta1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{v1beta1labels.HTTPSolverAnnotation: "true"},
+		},
+	}
+	// Add the label
+	cert, updated := updateHTTPSolver(context.Background(), cert, gw, "use-istio-http01-solver")
+	assert.True(t, updated)
+	assert.Equal(t, "true", cert.Labels["use-istio-http01-solver"])
+
+	// Test for idempotency
+	cert, updated = updateHTTPSolver(context.Background(), cert, gw, "use-istio-http01-solver")
+	assert.False(t, updated)
+	assert.Equal(t, "true", cert.Labels["use-istio-http01-solver"])
+}
