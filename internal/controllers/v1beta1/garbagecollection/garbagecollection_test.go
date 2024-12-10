@@ -181,8 +181,8 @@ func TestUpdateFunc(t *testing.T) {
 		},
 	}
 
-	updateFunc(event1, q)
-	updateFunc(event2, q)
+	updateFunc(context.Background(), event1, q)
+	updateFunc(context.Background(), event2, q)
 
 	assert.Equal(t, 2, q.Len())
 
