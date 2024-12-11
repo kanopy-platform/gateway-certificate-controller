@@ -30,30 +30,30 @@ type GatewayMutationHook struct {
 	externalDNS *ExternalDNSConfig
 }
 
-//ExternalDNSConfig passes configuration to the external DNS mutation behavior
+// ExternalDNSConfig passes configuration to the external DNS mutation behavior
 type ExternalDNSConfig struct {
 	enabled  bool
 	target   string
 	selector Selector
 }
 
-//Selector is a key value pair for matching annotations
+// Selector is a key value pair for matching annotations
 type Selector struct {
 	key   string
 	value string
 }
 
-//SetEnabled set the endabled field to a bool value
+// SetEnabled set the endabled field to a bool value
 func (edc *ExternalDNSConfig) SetEnabled(enabled bool) {
 	edc.enabled = enabled
 }
 
-//SetTarget sets the target field to a string value
+// SetTarget sets the target field to a string value
 func (edc *ExternalDNSConfig) SetTarget(target string) {
 	edc.target = target
 }
 
-//SetSelector sets the select field from a string value or returns an error
+// SetSelector sets the select field from a string value or returns an error
 func (edc *ExternalDNSConfig) SetSelector(target string) error {
 
 	v := strings.Split(target, "=")
@@ -91,6 +91,7 @@ func NewGatewayMutationHook(client istioversionedclient.Interface, nsl corev1lis
 }
 
 func (g *GatewayMutationHook) SetupWithManager(mgr manager.Manager) {
+	g.InjectDecoder(admission.NewDecoder(mgr.GetScheme()))
 	mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: g})
 }
 
