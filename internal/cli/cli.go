@@ -144,6 +144,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		Client: client.Options{
 			DryRun: &dryRun,
 		},
+		Logger: klog.Log,
 	})
 
 	if err != nil {
@@ -212,6 +213,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	})
 	if err != nil {
 		klog.Log.Error(err, "error adding event handler to the namespaces informer")
+		return err
 	}
 
 	coreV1Informer := k8sInformerFactory.Core().V1()
@@ -221,6 +223,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	})
 	if err != nil {
 		klog.Log.Error(err, "error adding event handler to the services informer")
+		return err
 	}
 
 	k8sInformerFactory.Start(wait.NeverStop)

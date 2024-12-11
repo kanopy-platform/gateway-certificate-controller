@@ -90,6 +90,7 @@ func (c *GatewayController) SetupWithManager(ctx context.Context, mgr manager.Ma
 		})
 		if err != nil {
 			log.Error(err, "error adding event handler to gateway informer")
+			return err
 		}
 	}
 
