@@ -72,7 +72,7 @@ func TestGatewayMutationHook(t *testing.T) {
 	utilruntime.Must(v1beta1.SchemeBuilder.AddToScheme(scheme))
 
 	decoder := admission.NewDecoder(scheme)
-	assert.NoError(t, gmh.InjectDecoder(decoder))
+	gmh.InjectDecoder(decoder)
 
 	gateway := &v1beta1.Gateway{
 		ObjectMeta: v1.ObjectMeta{

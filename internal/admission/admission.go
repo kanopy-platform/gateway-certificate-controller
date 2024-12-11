@@ -124,9 +124,8 @@ func (g *GatewayMutationHook) Handle(ctx context.Context, req admission.Request)
 	return admission.PatchResponseFromRaw(req.Object.Raw, jsonGateway)
 }
 
-func (g *GatewayMutationHook) InjectDecoder(d *admission.Decoder) error {
+func (g *GatewayMutationHook) InjectDecoder(d *admission.Decoder) {
 	g.decoder = d
-	return nil
 }
 
 func credentialName(ctx context.Context, namespace, name string, portName string) string {
