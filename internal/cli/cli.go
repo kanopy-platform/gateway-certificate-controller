@@ -144,7 +144,6 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		Client: client.Options{
 			DryRun: &dryRun,
 		},
-		Logger: klog.Log,
 	})
 
 	if err != nil {
