@@ -19,7 +19,7 @@ func TestParseLevelInfo(t *testing.T) {
 		},
 		{
 			level: "debug",
-			want:  zapcore.DebugLevel,
+			want:  zapcore.Level(-5),
 		},
 		{
 			level: "warn",
