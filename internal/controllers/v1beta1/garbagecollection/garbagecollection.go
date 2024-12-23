@@ -122,7 +122,7 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 	return reconcile.Result{}, nil
 }
 
-func updateFunc(e event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func updateFunc(ctx context.Context, e event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
 		Name:      e.ObjectNew.GetName(),
 		Namespace: e.ObjectNew.GetNamespace(),

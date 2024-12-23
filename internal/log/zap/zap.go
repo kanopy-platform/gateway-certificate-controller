@@ -8,10 +8,10 @@ import (
 
 func ParseLevel(level string) (zapcore.Level, error) {
 	switch level {
+	case "debug":
+		return zapcore.Level(-5), nil // Match k8s controller-runtime V(5) as zapcore.DebugLevel equivalent to V(1) is not verbose enough
 	case "info":
 		return zapcore.InfoLevel, nil
-	case "debug":
-		return zapcore.DebugLevel, nil
 	case "error":
 		return zapcore.ErrorLevel, nil
 	case "warn":

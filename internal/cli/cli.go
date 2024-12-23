@@ -29,11 +29,14 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	k8sinformers "k8s.io/client-go/informers"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	klog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 var scheme = runtime.NewScheme()
@@ -43,12 +46,12 @@ func init() {
 	utilruntime.Must(certmanagerv1.SchemeBuilder.AddToScheme(scheme))
 }
 
-//RootCommand is the origin of all command life
+// RootCommand is the origin of all command life
 type RootCommand struct {
 	k8sFlags *genericclioptions.ConfigFlags
 }
 
-//NewRootCommand seeds the new life of a root command
+// NewRootCommand seeds the new life of a root command
 func NewRootCommand() *cobra.Command {
 	k8sFlags := genericclioptions.NewConfigFlags(true)
 
@@ -126,15 +129,21 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	ctx := signals.SetupSignalHandler()
 
 	mgr, err := manager.New(cfg, manager.Options{
-		Scheme:                 scheme,
-		Host:                   "0.0.0.0",
-		Port:                   viper.GetInt("webhook-listen-port"),
-		CertDir:                viper.GetString("webhook-certs-dir"),
-		MetricsBindAddress:     fmt.Sprintf("0.0.0.0:%d", viper.GetInt("metrics-listen-port")),
+		Scheme: scheme,
+		WebhookServer: webhook.NewServer(webhook.Options{
+			Host:    "0.0.0.0",
+			Port:    viper.GetInt("webhook-listen-port"),
+			CertDir: viper.GetString("webhook-certs-dir"),
+		}),
+		Metrics: server.Options{
+			BindAddress: fmt.Sprintf("0.0.0.0:%d", viper.GetInt("metrics-listen-port")),
+		},
 		HealthProbeBindAddress: ":8080",
 		LeaderElection:         true,
 		LeaderElectionID:       "kanopy-gateway-cert-controller",
-		DryRunClient:           dryRun,
+		Client: client.Options{
+			DryRun: &dryRun,
+		},
 	})
 
 	if err != nil {
@@ -198,15 +207,23 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	nsInformer := k8sInformerFactory.Core().V1().Namespaces()
 
 	//need at least one listener func to populate the in memory cache
-	nsInformer.Informer().AddEventHandler(k8scache.ResourceEventHandlerFuncs{
+	_, err = nsInformer.Informer().AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 		AddFunc: func(new interface{}) {},
 	})
+	if err != nil {
+		klog.Log.Error(err, "error adding event handler to the namespaces informer")
+		return err
+	}
 
 	coreV1Informer := k8sInformerFactory.Core().V1()
 
-	coreV1Informer.Services().Informer().AddEventHandler(k8scache.ResourceEventHandlerFuncs{
+	_, err = coreV1Informer.Services().Informer().AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 		AddFunc: func(new interface{}) {},
 	})
+	if err != nil {
+		klog.Log.Error(err, "error adding event handler to the services informer")
+		return err
+	}
 
 	k8sInformerFactory.Start(wait.NeverStop)
 	k8sInformerFactory.WaitForCacheSync(wait.NeverStop)

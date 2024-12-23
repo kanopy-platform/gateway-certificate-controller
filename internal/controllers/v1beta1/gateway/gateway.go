@@ -70,6 +70,8 @@ func NewGatewayController(istioClient istioversionedclient.Interface, certClient
 }
 
 func (c *GatewayController) SetupWithManager(ctx context.Context, mgr manager.Manager) error {
+	log := log.FromContext(ctx)
+
 	ctrl, err := controller.New("istio-gateway-controller", mgr, controller.Options{
 		Reconciler: c,
 	})
@@ -81,11 +83,15 @@ func (c *GatewayController) SetupWithManager(ctx context.Context, mgr manager.Ma
 
 	informer := istioInformerFactory.Networking().V1beta1().Gateways().Informer()
 	if c.gatewayLookupCache != nil {
-		informer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
+		_, err := informer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 			AddFunc:    c.gatewayLookupCache.AddFunc,
 			UpdateFunc: c.gatewayLookupCache.UpdateFunc,
 			DeleteFunc: c.gatewayLookupCache.DeleteFunc,
 		})
+		if err != nil {
+			log.Error(err, "error adding event handler to gateway informer")
+			return err
+		}
 	}
 
 	if err := ctrl.Watch(&source.Informer{Informer: informer},
