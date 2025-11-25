@@ -133,7 +133,7 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 	if !ok {
 		// requeue the request to wait for the lookup cache to populate
 		// probably needs backoff
-		return nil, fmt.Errorf("Host %s: Gateway not found.", challenge.Spec.DNSName)
+		return nil, fmt.Errorf("host %s: gateway not found", challenge.Spec.DNSName)
 	}
 	log.V(1).Info(fmt.Sprintf("Debug: gateway found %s", namespacedGateway))
 
@@ -147,13 +147,13 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 
 	if len(serviceList) == 0 {
 		// requeue the request to wait for the service to appear in the api
-		return nil, fmt.Errorf("No service matched selector: %s", fmt.Sprintf("%s=%s,%s=%s", acmev1.DomainLabelKey, httpDomainHash, acmev1.TokenLabelKey, tokenHash))
+		return nil, fmt.Errorf("no service matched selector: %s", fmt.Sprintf("%s=%s,%s=%s", acmev1.DomainLabelKey, httpDomainHash, acmev1.TokenLabelKey, tokenHash))
 	}
 	svc := serviceList[0]
 
 	if len(svc.Spec.Ports) == 0 {
 		// this is probably unrecoverable
-		return nil, fmt.Errorf("Service: %s, missing port definition", svc.Name)
+		return nil, fmt.Errorf("service: %s, missing port definition", svc.Name)
 	}
 
 	cm := ChallengeMeta{
