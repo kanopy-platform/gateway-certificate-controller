@@ -4,7 +4,7 @@ A controller to automate the creation of cert-manager Certificates for istio Gat
 
 ## Directory and File Layout
 
-| Directory | Description | 
+| Directory | Description |
 | --------- | ----------- |
 | examples/k8s | Example manifests which can be used in the development of the controller |
 | internal/cli | Defines the command line interface and flags |
@@ -24,9 +24,10 @@ A controller to automate the creation of cert-manager Certificates for istio Gat
   - [v1beta1](./docs/api/v1beta1.md)
 - [Admission Controller](./docs/admission_controller.md)
 - Controllers
-  - [Gateway](./docs/controllers/gateway.md) 
+  - [Gateway](./docs/controllers/gateway.md)
   - [Garbage Collection](./docs/controllers/garbage_collection.md)
 
 ## Development
 
 Run `skaffold dev` to continously deploy into minikube / local k8s environment for testing. ([skaffold](https://skaffold.dev/))
+
