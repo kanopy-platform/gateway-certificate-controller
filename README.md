@@ -30,4 +30,3 @@ A controller to automate the creation of cert-manager Certificates for istio Gat
 ## Development
 
 Run `skaffold dev` to continously deploy into minikube / local k8s environment for testing. ([skaffold](https://skaffold.dev/))
-
