@@ -58,7 +58,7 @@ func (edc *ExternalDNSConfig) SetSelector(target string) error {
 
 	v := strings.Split(target, "=")
 	if len(v) < 2 {
-		return fmt.Errorf("External DNS annotation selector parse error expected key=value got: %q", target)
+		return fmt.Errorf("external DNS annotation selector parse error expected key=value got: %q", target)
 	}
 	edc.selector = Selector{
 		key:   v[0],

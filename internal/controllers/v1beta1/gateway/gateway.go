@@ -190,11 +190,11 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 	}
 
 	if b, ok := gateway.Annotations[v1beta1labels.IssueTemporaryCertificateAnnotation]; ok && b == "true" {
-		cert.ObjectMeta.Annotations[v1certmanager.IssueTemporaryCertificateAnnotation] = "true"
+		cert.Annotations[v1certmanager.IssueTemporaryCertificateAnnotation] = "true"
 	}
 
 	if b, ok := gateway.Annotations[v1beta1labels.HTTPSolverAnnotation]; ok && b == "true" {
-		cert.ObjectMeta.Labels[c.httpSolverLabel] = "true"
+		cert.Labels[c.httpSolverLabel] = "true"
 	}
 	createOptions := metav1.CreateOptions{FieldManager: FieldManager}
 	if c.dryRun {

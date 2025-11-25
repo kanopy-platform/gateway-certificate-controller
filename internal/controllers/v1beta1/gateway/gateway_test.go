@@ -220,7 +220,7 @@ func setupControllerWithSpy(cs *istiofake.Clientset, certFake *certmanagerfake.C
 	spy := &controllerSpy{
 		GatewayController: NewGatewayController(cs, certFake, WithDryRun(opts.DryRun), WithCertificateNamespace(TestCertNamespace), WithGatewayLookupCache(opts.GatewayLookupCache), WithHTTPSolverLabel("use-istio-http01-solver")),
 	}
-	spy.GatewayController.certHandler = spy
+	spy.certHandler = spy
 	return spy
 }
 
@@ -356,7 +356,7 @@ func TestGatewayReconcile_CreateCertificateWithTempCertAnnotation(t *testing.T) 
 	assertCreateCertificateCalled(t, helper)
 	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
 	assert.NoError(t, err)
-	out, ok := cert.ObjectMeta.Annotations[v1certmanager.IssueTemporaryCertificateAnnotation]
+	out, ok := cert.Annotations[v1certmanager.IssueTemporaryCertificateAnnotation]
 	assert.True(t, ok)
 	assert.Equal(t, "true", out)
 }
