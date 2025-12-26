@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 
-	v1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1/labels"
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
 	networkingv1 "istio.io/api/networking/v1"
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
@@ -217,7 +216,7 @@ func mutateV1(ctx context.Context, gateway *v1.Gateway, externalDNS *ExternalDNS
 	}
 
 	// If we don't have the tls management label or it isn't set to true return
-	if val, ok := gateway.Labels[v1labels.InjectSimpleCredentialNameLabel]; ok && val == "true" {
+	if val, ok := gateway.Labels[v1beta1labels.InjectSimpleCredentialNameLabel]; ok && val == "true" {
 		for _, s := range gateway.Spec.Servers {
 			if s.Tls == nil {
 				continue
@@ -272,12 +271,12 @@ func (edc *ExternalDNSConfig) mutateV1(ctx context.Context, gateway *v1.Gateway,
 	}
 
 	// we only allow external-dns to use the hosts key on gateway server entries because those are validated by OPA
-	delete(gateway.Annotations, v1labels.ExternalDNSHostnameAnnotationKey)
+	delete(gateway.Annotations, v1beta1labels.ExternalDNSHostnameAnnotationKey)
 
 	// set the target annotation if we have a target or delete it if we don't
 	if edc.target != "" {
-		gateway.Annotations[v1labels.ExternalDNSTargetAnnotationKey] = edc.target
+		gateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey] = edc.target
 	} else {
-		delete(gateway.Annotations, v1labels.ExternalDNSTargetAnnotationKey)
+		delete(gateway.Annotations, v1beta1labels.ExternalDNSTargetAnnotationKey)
 	}
 }

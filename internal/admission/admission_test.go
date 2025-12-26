@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	v1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1/labels"
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
 	"github.com/stretchr/testify/assert"
 	networkingapiv1 "istio.io/api/networking/v1"
@@ -165,7 +164,7 @@ func TestGatewayMutationHookV1(t *testing.T) {
 			Name:      "test-gateway",
 			Namespace: "devops",
 			Labels: map[string]string{
-				v1labels.InjectSimpleCredentialNameLabel: "true",
+				v1beta1labels.InjectSimpleCredentialNameLabel: "true",
 			},
 		},
 		Spec: networkingapiv1.Gateway{
@@ -468,10 +467,10 @@ func TestMutateV1(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "example-gateway",
 			Namespace: "devops",
-			Labels:    map[string]string{v1labels.InjectSimpleCredentialNameLabel: "true"},
+			Labels:    map[string]string{v1beta1labels.InjectSimpleCredentialNameLabel: "true"},
 			Annotations: map[string]string{
-				v1labels.ExternalDNSTargetAnnotationKey:   "there",
-				v1labels.ExternalDNSHostnameAnnotationKey: "more,hosts",
+				v1beta1labels.ExternalDNSTargetAnnotationKey:   "there",
+				v1beta1labels.ExternalDNSHostnameAnnotationKey: "more,hosts",
 			},
 		},
 		Spec: networkingapiv1.Gateway{
@@ -526,9 +525,9 @@ func TestMutateV1(t *testing.T) {
 	assert.NotEqual(t, gateway.Spec.Servers[2].Tls.CredentialName, mutatedGateway.Spec.Servers[2].Tls.CredentialName)
 
 	assert.NotNil(t, mutatedGateway.Annotations)
-	_, found := mutatedGateway.Annotations[v1labels.ExternalDNSHostnameAnnotationKey]
+	_, found := mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
 	assert.False(t, found)
-	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1labels.ExternalDNSTargetAnnotationKey])
+	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
 
 	// Ensure we don't mutate external dns annotations on allowed ns
 	ns = corev1.Namespace{
@@ -540,8 +539,8 @@ func TestMutateV1(t *testing.T) {
 
 	mutatedGateway = mutateV1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 	assert.NotNil(t, mutatedGateway.Annotations)
-	assert.Equal(t, "more,hosts", mutatedGateway.Annotations[v1labels.ExternalDNSHostnameAnnotationKey])
-	assert.Equal(t, "there", gateway.Annotations[v1labels.ExternalDNSTargetAnnotationKey])
+	assert.Equal(t, "more,hosts", mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey])
+	assert.Equal(t, "there", gateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
 
 	// Ensure we mutate external dns labels for gateways without our tls label
 	ns = corev1.Namespace{
@@ -554,9 +553,9 @@ func TestMutateV1(t *testing.T) {
 	gateway.Labels = map[string]string{}
 	mutatedGateway = mutateV1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 	assert.NotNil(t, mutatedGateway.Annotations)
-	_, found = mutatedGateway.Annotations[v1labels.ExternalDNSHostnameAnnotationKey]
+	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
 	assert.False(t, found)
-	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1labels.ExternalDNSTargetAnnotationKey])
+	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
 	assert.Equal(t, gateway.Spec.Servers[2].Tls.CredentialName, mutatedGateway.Spec.Servers[2].Tls.CredentialName)
 
 	// ensure we remove the target annotation if no target is set
@@ -565,7 +564,7 @@ func TestMutateV1(t *testing.T) {
 
 	mutatedGateway = mutateV1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 	assert.NotNil(t, mutatedGateway.Annotations)
-	_, found = mutatedGateway.Annotations[v1labels.ExternalDNSTargetAnnotationKey]
+	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey]
 	assert.False(t, found)
 
 	// Ensure we do mutate external dns annotations when passed a nil namespace pointer
@@ -576,9 +575,9 @@ func TestMutateV1(t *testing.T) {
 	var nilNS *corev1.Namespace
 	mutatedGateway = mutateV1(context.TODO(), gateway.DeepCopy(), eDNS, nilNS)
 	assert.NotNil(t, mutatedGateway.Annotations)
-	_, found = mutatedGateway.Annotations[v1labels.ExternalDNSHostnameAnnotationKey]
+	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
 	assert.False(t, found)
-	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1labels.ExternalDNSTargetAnnotationKey])
+	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
 }
 
 func TestMutateV1Beta1WithNoMetadata(t *testing.T) {
@@ -630,7 +629,7 @@ func TestMutateV1WithNoMetadata(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "example-gateway",
 			Namespace: "devops",
-			Labels:    map[string]string{v1labels.InjectSimpleCredentialNameLabel: "true"},
+			Labels:    map[string]string{v1beta1labels.InjectSimpleCredentialNameLabel: "true"},
 		},
 		Spec: networkingapiv1.Gateway{
 			Servers: []*networkingapiv1.Server{
@@ -660,7 +659,7 @@ func TestMutateV1WithNoMetadata(t *testing.T) {
 	assert.Equal(t, gateway.Spec.Servers[0], mutatedGateway.Spec.Servers[0])
 
 	assert.NotNil(t, mutatedGateway.Annotations)
-	_, found := mutatedGateway.Annotations[v1labels.ExternalDNSHostnameAnnotationKey]
+	_, found := mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
 	assert.False(t, found)
-	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1labels.ExternalDNSTargetAnnotationKey])
+	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
 }
