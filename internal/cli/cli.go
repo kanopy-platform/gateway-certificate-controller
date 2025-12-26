@@ -24,6 +24,7 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	certmanagerversionedclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
+	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -43,6 +44,7 @@ var scheme = runtime.NewScheme()
 
 func init() {
 	utilruntime.Must(networkingv1beta1.SchemeBuilder.AddToScheme(scheme))
+	utilruntime.Must(networkingv1.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(certmanagerv1.SchemeBuilder.AddToScheme(scheme))
 }
 
@@ -145,7 +147,6 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 			DryRun: &dryRun,
 		},
 	})
-
 	if err != nil {
 		klog.Log.Error(err, "unable to set up  controller manager")
 		return err
@@ -177,8 +178,8 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	externalDNSTarget := viper.GetString("external-dns-target")
 	externalDNSSelector := viper.GetString("external-dns-selector")
 
-	//externalDNS settings are enabled with defaults via --external-dns or implictly by overriding defaults
-	//with either flag
+	// externalDNS settings are enabled with defaults via --external-dns or implictly by overriding defaults
+	// with either flag
 	externalDNSEnabled := viper.GetBool("external-dns")
 	if externalDNSTarget != "" || externalDNSSelector != "" {
 		externalDNSEnabled = true
@@ -206,7 +207,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 
 	nsInformer := k8sInformerFactory.Core().V1().Namespaces()
 
-	//need at least one listener func to populate the in memory cache
+	// need at least one listener func to populate the in memory cache
 	_, err = nsInformer.Informer().AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 		AddFunc: func(new interface{}) {},
 	})
