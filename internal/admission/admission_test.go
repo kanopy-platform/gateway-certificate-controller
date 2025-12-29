@@ -9,14 +9,17 @@ import (
 
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
 	"github.com/stretchr/testify/assert"
+	networkingapiv1 "istio.io/api/networking/v1"
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
+	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	"istio.io/client-go/pkg/apis/networking/v1beta1"
 	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -32,7 +35,6 @@ func (fnsl *fakeNSLister) List(selector labels.Selector) (ret []*corev1.Namespac
 }
 
 func (fnsl *fakeNSLister) Get(name string) (*corev1.Namespace, error) {
-
 	if fnsl.ns == nil {
 		fnsl.ns = map[string]*corev1.Namespace{}
 	}
@@ -58,7 +60,7 @@ func (fnsl *fakeNSLister) set(ns *corev1.Namespace) {
 	fnsl.ns[n.Name] = n
 }
 
-func TestGatewayMutationHook(t *testing.T) {
+func TestGatewayMutationHookV1Beta1(t *testing.T) {
 	t.Parallel()
 
 	nsl := &fakeNSLister{}
@@ -70,12 +72,13 @@ func TestGatewayMutationHook(t *testing.T) {
 
 	scheme := runtime.NewScheme()
 	utilruntime.Must(v1beta1.SchemeBuilder.AddToScheme(scheme))
+	utilruntime.Must(networkingv1.SchemeBuilder.AddToScheme(scheme))
 
 	decoder := admission.NewDecoder(scheme)
 	gmh.InjectDecoder(decoder)
 
 	gateway := &v1beta1.Gateway{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-gateway",
 			Namespace: "devops",
 			Labels: map[string]string{
@@ -108,12 +111,23 @@ func TestGatewayMutationHook(t *testing.T) {
 	}{
 		{
 			description: "Empty AdmissionRequest should be rejected",
-			request:     admissionv1.AdmissionRequest{},
+			request: admissionv1.AdmissionRequest{
+				Kind: metav1.GroupVersionKind{
+					Group:   "networking.istio.io",
+					Version: "v1beta1",
+					Kind:    "Gateway",
+				},
+			},
 			wantAllowed: false,
 		},
 		{
-			description: "Successful AdmissionRequest with Gateway",
+			description: "Successful AdmissionRequest with v1beta1 Gateway",
 			request: admissionv1.AdmissionRequest{
+				Kind: metav1.GroupVersionKind{
+					Group:   "networking.istio.io",
+					Version: "v1beta1",
+					Kind:    "Gateway",
+				},
 				Object: runtime.RawExtension{
 					Raw: gatewayBytes,
 				},
@@ -124,6 +138,143 @@ func TestGatewayMutationHook(t *testing.T) {
 
 	for _, test := range tests {
 		response := gmh.Handle(context.TODO(), admission.Request{AdmissionRequest: test.request})
+		assert.Equal(t, test.wantAllowed, response.Allowed, test.description)
+	}
+}
+
+func TestGatewayMutationHookV1(t *testing.T) {
+	t.Parallel()
+
+	nsl := &fakeNSLister{}
+	ns := corev1.Namespace{}
+	ns.Name = "devops"
+	nsl.set(&ns)
+
+	gmh := NewGatewayMutationHook(istiofake.NewSimpleClientset(), nsl)
+
+	scheme := runtime.NewScheme()
+	utilruntime.Must(v1beta1.SchemeBuilder.AddToScheme(scheme))
+	utilruntime.Must(networkingv1.SchemeBuilder.AddToScheme(scheme))
+
+	decoder := admission.NewDecoder(scheme)
+	gmh.InjectDecoder(decoder)
+
+	gateway := &networkingv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-gateway",
+			Namespace: "devops",
+			Labels: map[string]string{
+				v1beta1labels.InjectSimpleCredentialNameLabel: "true",
+			},
+		},
+		Spec: networkingapiv1.Gateway{
+			Servers: []*networkingapiv1.Server{
+				{
+					Port: &networkingapiv1.Port{
+						Number: 443,
+						Name:   "https",
+					},
+					Tls: &networkingapiv1.ServerTLSSettings{
+						Mode:           networkingapiv1.ServerTLSSettings_SIMPLE,
+						CredentialName: "should-be-replaced",
+					},
+				},
+			},
+		},
+	}
+
+	gatewayBytes, err := json.Marshal(gateway)
+	assert.NoError(t, err)
+
+	tests := []struct {
+		description string
+		request     admissionv1.AdmissionRequest
+		wantAllowed bool
+	}{
+		{
+			description: "Empty AdmissionRequest should be rejected",
+			request: admissionv1.AdmissionRequest{
+				Kind: metav1.GroupVersionKind{
+					Group:   "networking.istio.io",
+					Version: "v1",
+					Kind:    "Gateway",
+				},
+			},
+			wantAllowed: false,
+		},
+		{
+			description: "Successful AdmissionRequest with v1 Gateway",
+			request: admissionv1.AdmissionRequest{
+				Kind: metav1.GroupVersionKind{
+					Group:   "networking.istio.io",
+					Version: "v1",
+					Kind:    "Gateway",
+				},
+				Object: runtime.RawExtension{
+					Raw: gatewayBytes,
+				},
+			},
+			wantAllowed: true,
+		},
+	}
+
+	for _, test := range tests {
+		response := gmh.Handle(context.TODO(), admission.Request{AdmissionRequest: test.request})
+		assert.Equal(t, test.wantAllowed, response.Allowed, test.description)
+	}
+}
+
+func TestGatewayMutationHookVersionRouting(t *testing.T) {
+	t.Parallel()
+
+	nsl := &fakeNSLister{}
+	ns := corev1.Namespace{}
+	ns.Name = "devops"
+	nsl.set(&ns)
+
+	gmh := NewGatewayMutationHook(istiofake.NewSimpleClientset(), nsl)
+
+	scheme := runtime.NewScheme()
+	utilruntime.Must(v1beta1.SchemeBuilder.AddToScheme(scheme))
+	utilruntime.Must(networkingv1.SchemeBuilder.AddToScheme(scheme))
+
+	decoder := admission.NewDecoder(scheme)
+	gmh.InjectDecoder(decoder)
+
+	tests := []struct {
+		description string
+		gvk         schema.GroupVersionKind
+		wantAllowed bool
+	}{
+		{
+			description: "Unsupported version should be rejected",
+			gvk: schema.GroupVersionKind{
+				Group:   "networking.istio.io",
+				Version: "v2alpha1",
+				Kind:    "Gateway",
+			},
+			wantAllowed: false,
+		},
+		{
+			description: "Empty version should be rejected",
+			gvk: schema.GroupVersionKind{
+				Group:   "networking.istio.io",
+				Version: "",
+				Kind:    "Gateway",
+			},
+			wantAllowed: false,
+		},
+	}
+
+	for _, test := range tests {
+		request := admissionv1.AdmissionRequest{
+			Kind: metav1.GroupVersionKind{
+				Group:   test.gvk.Group,
+				Version: test.gvk.Version,
+				Kind:    test.gvk.Kind,
+			},
+		}
+		response := gmh.Handle(context.TODO(), admission.Request{AdmissionRequest: request})
 		assert.Equal(t, test.wantAllowed, response.Allowed, test.description)
 	}
 }
@@ -163,11 +314,11 @@ func TestCredentialName(t *testing.T) {
 	}
 }
 
-func TestMutate(t *testing.T) {
+func TestMutateV1Beta1(t *testing.T) {
 	t.Parallel()
 
 	gateway := v1beta1.Gateway{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "example-gateway",
 			Namespace: "devops",
 			Labels:    map[string]string{v1beta1labels.InjectSimpleCredentialNameLabel: "true"},
@@ -214,13 +365,13 @@ func TestMutate(t *testing.T) {
 	eDNS.SetTarget("vanity-target")
 
 	ns := corev1.Namespace{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{"ingress-whitelist": "*.devops.example.com"},
 			Name:        "devops",
 		},
 	}
 
-	mutatedGateway := mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	mutatedGateway := mutateV1Beta1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 
 	assert.Equal(t, gateway.Spec.Servers[0], mutatedGateway.Spec.Servers[0])
 	assert.Equal(t, gateway.Spec.Servers[1], mutatedGateway.Spec.Servers[1])
@@ -234,27 +385,27 @@ func TestMutate(t *testing.T) {
 
 	// Ensure we don't mutate external dns annotations on allowed ns
 	ns = corev1.Namespace{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{"ingress-whitelist": "*"},
 			Name:        "devops",
 		},
 	}
 
-	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	mutatedGateway = mutateV1Beta1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 	assert.NotNil(t, mutatedGateway.Annotations)
 	assert.Equal(t, "more,hosts", mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey])
 	assert.Equal(t, "there", gateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
 
 	// Ensure we mutate external dns labels for gateways without our tls label
 	ns = corev1.Namespace{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{"ingress-whitelist": "*.devops.example.com"},
 			Name:        "devops",
 		},
 	}
 
 	gateway.Labels = map[string]string{}
-	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	mutatedGateway = mutateV1Beta1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 	assert.NotNil(t, mutatedGateway.Annotations)
 	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
 	assert.False(t, found)
@@ -265,14 +416,14 @@ func TestMutate(t *testing.T) {
 	eDNS = NewExternalDNSConfig()
 	eDNS.SetEnabled(true)
 
-	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	mutatedGateway = mutateV1Beta1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 	assert.NotNil(t, mutatedGateway.Annotations)
 	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey]
 	assert.False(t, found)
 
 	// Ensure we don't mutate external dns annotations with custom annotations selectors
 	ns = corev1.Namespace{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{"testkey": "testvalue"},
 			Name:        "devops",
 		},
@@ -282,19 +433,19 @@ func TestMutate(t *testing.T) {
 	eDNS.SetTarget("vanity-target")
 	assert.NoError(t, eDNS.SetSelector("testkey=testvalue"))
 
-	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	mutatedGateway = mutateV1Beta1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 	assert.NotNil(t, mutatedGateway.Annotations)
 	assert.Equal(t, "more,hosts", mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey])
 	assert.Equal(t, "there", gateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
 
 	// Ensure we do mutate external dns annotations without custom annotations selectors
 	ns = corev1.Namespace{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{"ingress-whitelist": "*"},
 			Name:        "devops",
 		},
 	}
-	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	mutatedGateway = mutateV1Beta1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 	assert.NotNil(t, mutatedGateway.Annotations)
 	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
 	assert.False(t, found)
@@ -302,19 +453,138 @@ func TestMutate(t *testing.T) {
 
 	// Ensure we do mutate external dns annotations when passed a nil namespace pointer
 	var nilNS *corev1.Namespace
-	mutatedGateway = mutate(context.TODO(), gateway.DeepCopy(), eDNS, nilNS)
+	mutatedGateway = mutateV1Beta1(context.TODO(), gateway.DeepCopy(), eDNS, nilNS)
 	assert.NotNil(t, mutatedGateway.Annotations)
 	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
 	assert.False(t, found)
 	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
-
 }
 
-func TestMutateWithNoMetadata(t *testing.T) {
+func TestMutateV1(t *testing.T) {
+	t.Parallel()
+
+	gateway := networkingv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "example-gateway",
+			Namespace: "devops",
+			Labels:    map[string]string{v1beta1labels.InjectSimpleCredentialNameLabel: "true"},
+			Annotations: map[string]string{
+				v1beta1labels.ExternalDNSTargetAnnotationKey:   "there",
+				v1beta1labels.ExternalDNSHostnameAnnotationKey: "more,hosts",
+			},
+		},
+		Spec: networkingapiv1.Gateway{
+			Servers: []*networkingapiv1.Server{
+				{
+					Tls: nil,
+					Port: &networkingapiv1.Port{
+						Number: 80,
+						Name:   "http",
+					},
+				},
+				{
+					Port: &networkingapiv1.Port{
+						Number: 443,
+						Name:   "https",
+					},
+					Tls: &networkingapiv1.ServerTLSSettings{
+						Mode:           networkingapiv1.ServerTLSSettings_PASSTHROUGH,
+						CredentialName: "should-not-be-mutated",
+					},
+				},
+				{
+					Port: &networkingapiv1.Port{
+						Number: 443,
+						Name:   "https",
+					},
+					Tls: &networkingapiv1.ServerTLSSettings{
+						Mode:           networkingapiv1.ServerTLSSettings_SIMPLE,
+						CredentialName: "should-be-mutated",
+					},
+				},
+			},
+		},
+	}
+
+	eDNS := NewExternalDNSConfig()
+	eDNS.SetEnabled(true)
+	eDNS.SetTarget("vanity-target")
+
+	ns := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{"ingress-whitelist": "*.devops.example.com"},
+			Name:        "devops",
+		},
+	}
+
+	mutatedGateway := mutateV1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+
+	assert.Equal(t, gateway.Spec.Servers[0], mutatedGateway.Spec.Servers[0])
+	assert.Equal(t, gateway.Spec.Servers[1], mutatedGateway.Spec.Servers[1])
+	assert.Equal(t, gateway.Spec.Servers[2].Tls.Mode, mutatedGateway.Spec.Servers[2].Tls.Mode)
+	assert.NotEqual(t, gateway.Spec.Servers[2].Tls.CredentialName, mutatedGateway.Spec.Servers[2].Tls.CredentialName)
+
+	assert.NotNil(t, mutatedGateway.Annotations)
+	_, found := mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
+	assert.False(t, found)
+	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
+
+	// Ensure we don't mutate external dns annotations on allowed ns
+	ns = corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{"ingress-whitelist": "*"},
+			Name:        "devops",
+		},
+	}
+
+	mutatedGateway = mutateV1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	assert.NotNil(t, mutatedGateway.Annotations)
+	assert.Equal(t, "more,hosts", mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey])
+	assert.Equal(t, "there", gateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
+
+	// Ensure we mutate external dns labels for gateways without our tls label
+	ns = corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{"ingress-whitelist": "*.devops.example.com"},
+			Name:        "devops",
+		},
+	}
+
+	gateway.Labels = map[string]string{}
+	mutatedGateway = mutateV1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	assert.NotNil(t, mutatedGateway.Annotations)
+	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
+	assert.False(t, found)
+	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
+	assert.Equal(t, gateway.Spec.Servers[2].Tls.CredentialName, mutatedGateway.Spec.Servers[2].Tls.CredentialName)
+
+	// ensure we remove the target annotation if no target is set
+	eDNS = NewExternalDNSConfig()
+	eDNS.SetEnabled(true)
+
+	mutatedGateway = mutateV1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	assert.NotNil(t, mutatedGateway.Annotations)
+	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey]
+	assert.False(t, found)
+
+	// Ensure we do mutate external dns annotations when passed a nil namespace pointer
+	eDNS = NewExternalDNSConfig()
+	eDNS.SetEnabled(true)
+	eDNS.SetTarget("vanity-target")
+
+	var nilNS *corev1.Namespace
+	mutatedGateway = mutateV1(context.TODO(), gateway.DeepCopy(), eDNS, nilNS)
+	assert.NotNil(t, mutatedGateway.Annotations)
+	_, found = mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
+	assert.False(t, found)
+	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
+}
+
+func TestMutateV1Beta1WithNoMetadata(t *testing.T) {
 	t.Parallel()
 
 	gateway := v1beta1.Gateway{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "example-gateway",
 			Namespace: "devops",
 			Labels:    map[string]string{v1beta1labels.InjectSimpleCredentialNameLabel: "true"},
@@ -337,13 +607,55 @@ func TestMutateWithNoMetadata(t *testing.T) {
 	eDNS.SetTarget("vanity-target")
 
 	ns := corev1.Namespace{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{"ingress-whitelist": "*.devops.example.com"},
 			Name:        "devops",
 		},
 	}
 
-	mutatedGateway := mutate(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	mutatedGateway := mutateV1Beta1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
+	assert.Equal(t, gateway.Spec.Servers[0], mutatedGateway.Spec.Servers[0])
+
+	assert.NotNil(t, mutatedGateway.Annotations)
+	_, found := mutatedGateway.Annotations[v1beta1labels.ExternalDNSHostnameAnnotationKey]
+	assert.False(t, found)
+	assert.Equal(t, "vanity-target", mutatedGateway.Annotations[v1beta1labels.ExternalDNSTargetAnnotationKey])
+}
+
+func TestMutateV1WithNoMetadata(t *testing.T) {
+	t.Parallel()
+
+	gateway := networkingv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "example-gateway",
+			Namespace: "devops",
+			Labels:    map[string]string{v1beta1labels.InjectSimpleCredentialNameLabel: "true"},
+		},
+		Spec: networkingapiv1.Gateway{
+			Servers: []*networkingapiv1.Server{
+				{
+					Tls: nil,
+					Port: &networkingapiv1.Port{
+						Number: 80,
+						Name:   "http",
+					},
+				},
+			},
+		},
+	}
+
+	eDNS := NewExternalDNSConfig()
+	eDNS.SetEnabled(true)
+	eDNS.SetTarget("vanity-target")
+
+	ns := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{"ingress-whitelist": "*.devops.example.com"},
+			Name:        "devops",
+		},
+	}
+
+	mutatedGateway := mutateV1(context.TODO(), gateway.DeepCopy(), eDNS, &ns)
 	assert.Equal(t, gateway.Spec.Servers[0], mutatedGateway.Spec.Servers[0])
 
 	assert.NotNil(t, mutatedGateway.Annotations)
