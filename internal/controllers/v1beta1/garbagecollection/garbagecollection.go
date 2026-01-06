@@ -60,12 +60,14 @@ func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr 
 		listOptions.LabelSelector = v1beta1labels.ManagedLabelSelector()
 	}))
 
-	if err := ctrl.Watch(&source.Informer{Informer: certmanagerInformerFactory.Certmanager().V1().Certificates().Informer()},
-		handler.Funcs{
+	if err := ctrl.Watch(&source.Informer{
+		Informer: certmanagerInformerFactory.Certmanager().V1().Certificates().Informer(),
+		Handler: handler.Funcs{
 			// only handle Update so that Deleting a certificate does not trigger another Reconcile
 			// Create will also trigger an Update
 			UpdateFunc: updateFunc,
-		}); err != nil {
+		},
+	}); err != nil {
 		return err
 	}
 
