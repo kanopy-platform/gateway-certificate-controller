@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -50,7 +51,7 @@ func NewGarbageCollectionController(istioClient istioversionedclient.Interface, 
 func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr manager.Manager) error {
 	ctrl, err := controller.New(c.name, mgr, controller.Options{
 		Reconciler:  c,
-		RateLimiter: workqueue.NewItemExponentialFailureRateLimiter(time.Second, 1000*time.Second), // maxDelay is limited by the Informer defaultRsync interval
+		RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](time.Second, 1000*time.Second), // maxDelay is limited by the Informer defaultRsync interval
 	})
 	if err != nil {
 		return err
@@ -62,7 +63,7 @@ func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr 
 
 	if err := ctrl.Watch(&source.Informer{
 		Informer: certmanagerInformerFactory.Certmanager().V1().Certificates().Informer(),
-		Handler: handler.Funcs{
+		Handler: handler.TypedFuncs[client.Object, reconcile.Request]{
 			// only handle Update so that Deleting a certificate does not trigger another Reconcile
 			// Create will also trigger an Update
 			UpdateFunc: updateFunc,
@@ -124,7 +125,7 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 	return reconcile.Result{}, nil
 }
 
-func updateFunc(ctx context.Context, e event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func updateFunc(ctx context.Context, e event.TypedUpdateEvent[client.Object], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
 		Name:      e.ObjectNew.GetName(),
 		Namespace: e.ObjectNew.GetNamespace(),

@@ -69,7 +69,7 @@ func (cs *ChallengeSolver) SetupWithManager(ctx context.Context, mgr manager.Man
 
 	ctrl, err := controller.New("challengesolver", mgr, controller.Options{
 		Reconciler:  cs,
-		RateLimiter: workqueue.NewItemExponentialFailureRateLimiter(time.Second, 1000*time.Second),
+		RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](time.Second, 1000*time.Second),
 	})
 
 	if err != nil {

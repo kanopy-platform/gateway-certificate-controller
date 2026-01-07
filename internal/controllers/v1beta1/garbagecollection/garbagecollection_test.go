@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -161,9 +162,9 @@ func TestGarbageCollectionControllerReconcile(t *testing.T) {
 func TestUpdateFunc(t *testing.T) {
 	t.Parallel()
 
-	q := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
 
-	event1 := event.UpdateEvent{
+	event1 := event.TypedUpdateEvent[client.Object]{
 		ObjectNew: &v1.Certificate{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-cert",
@@ -172,7 +173,7 @@ func TestUpdateFunc(t *testing.T) {
 		},
 	}
 
-	event2 := event.UpdateEvent{
+	event2 := event.TypedUpdateEvent[client.Object]{
 		ObjectNew: &v1.Certificate{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-cert-2",
