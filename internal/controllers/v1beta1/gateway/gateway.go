@@ -94,8 +94,10 @@ func (c *GatewayController) SetupWithManager(ctx context.Context, mgr manager.Ma
 		}
 	}
 
-	if err := ctrl.Watch(&source.Informer{Informer: informer},
-		&handler.EnqueueRequestForObject{}); err != nil {
+	if err := ctrl.Watch(&source.Informer{
+		Informer: informer,
+		Handler:  &handler.EnqueueRequestForObject{},
+	}); err != nil {
 		return err
 	}
 

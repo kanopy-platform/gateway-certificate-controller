@@ -161,7 +161,7 @@ func TestGarbageCollectionControllerReconcile(t *testing.T) {
 func TestUpdateFunc(t *testing.T) {
 	t.Parallel()
 
-	q := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
 
 	event1 := event.UpdateEvent{
 		ObjectNew: &v1.Certificate{

@@ -50,7 +50,7 @@ func NewGarbageCollectionController(istioClient istioversionedclient.Interface, 
 func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr manager.Manager) error {
 	ctrl, err := controller.New(c.name, mgr, controller.Options{
 		Reconciler:  c,
-		RateLimiter: workqueue.NewItemExponentialFailureRateLimiter(time.Second, 1000*time.Second), // maxDelay is limited by the Informer defaultRsync interval
+		RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](time.Second, 1000*time.Second), // maxDelay is limited by the Informer defaultRsync interval
 	})
 	if err != nil {
 		return err
@@ -60,12 +60,14 @@ func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr 
 		listOptions.LabelSelector = v1beta1labels.ManagedLabelSelector()
 	}))
 
-	if err := ctrl.Watch(&source.Informer{Informer: certmanagerInformerFactory.Certmanager().V1().Certificates().Informer()},
-		handler.Funcs{
+	if err := ctrl.Watch(&source.Informer{
+		Informer: certmanagerInformerFactory.Certmanager().V1().Certificates().Informer(),
+		Handler: handler.Funcs{
 			// only handle Update so that Deleting a certificate does not trigger another Reconcile
 			// Create will also trigger an Update
 			UpdateFunc: updateFunc,
-		}); err != nil {
+		},
+	}); err != nil {
 		return err
 	}
 
@@ -122,7 +124,7 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 	return reconcile.Result{}, nil
 }
 
-func updateFunc(ctx context.Context, e event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func updateFunc(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
 		Name:      e.ObjectNew.GetName(),
 		Namespace: e.ObjectNew.GetNamespace(),

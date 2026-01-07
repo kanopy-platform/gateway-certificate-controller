@@ -28,7 +28,7 @@ const (
 type GatewayMutationHook struct {
 	istioClient istioversionedclient.Interface
 	nsLister    corev1listers.NamespaceLister
-	decoder     *admission.Decoder
+	decoder     admission.Decoder
 	externalDNS *ExternalDNSConfig
 }
 
@@ -165,7 +165,7 @@ func (g *GatewayMutationHook) handleV1(ctx context.Context, req admission.Reques
 	return admission.PatchResponseFromRaw(req.Object.Raw, jsonGateway)
 }
 
-func (g *GatewayMutationHook) InjectDecoder(d *admission.Decoder) {
+func (g *GatewayMutationHook) InjectDecoder(d admission.Decoder) {
 	g.decoder = d
 }
 

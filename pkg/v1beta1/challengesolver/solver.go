@@ -69,7 +69,7 @@ func (cs *ChallengeSolver) SetupWithManager(ctx context.Context, mgr manager.Man
 
 	ctrl, err := controller.New("challengesolver", mgr, controller.Options{
 		Reconciler:  cs,
-		RateLimiter: workqueue.NewItemExponentialFailureRateLimiter(time.Second, 1000*time.Second),
+		RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](time.Second, 1000*time.Second),
 	})
 
 	if err != nil {
@@ -77,8 +77,10 @@ func (cs *ChallengeSolver) SetupWithManager(ctx context.Context, mgr manager.Man
 	}
 
 	certmanagerInformerFactory := certmanagerinformers.NewSharedInformerFactoryWithOptions(cs.certmanagerClient, time.Second*30)
-	if err := ctrl.Watch(&source.Informer{Informer: certmanagerInformerFactory.Acme().V1().Challenges().Informer()},
-		&handler.EnqueueRequestForObject{}); err != nil {
+	if err := ctrl.Watch(&source.Informer{
+		Informer: certmanagerInformerFactory.Acme().V1().Challenges().Informer(),
+		Handler:  &handler.EnqueueRequestForObject{},
+	}); err != nil {
 		return err
 	}
 
