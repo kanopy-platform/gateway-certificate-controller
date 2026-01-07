@@ -15,7 +15,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -63,7 +62,7 @@ func (c *GarbageCollectionController) SetupWithManager(ctx context.Context, mgr 
 
 	if err := ctrl.Watch(&source.Informer{
 		Informer: certmanagerInformerFactory.Certmanager().V1().Certificates().Informer(),
-		Handler: handler.TypedFuncs[client.Object, reconcile.Request]{
+		Handler: handler.Funcs{
 			// only handle Update so that Deleting a certificate does not trigger another Reconcile
 			// Create will also trigger an Update
 			UpdateFunc: updateFunc,

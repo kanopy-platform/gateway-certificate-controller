@@ -13,7 +13,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -164,7 +163,7 @@ func TestUpdateFunc(t *testing.T) {
 
 	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
 
-	event1 := event.TypedUpdateEvent[client.Object]{
+	event1 := event.UpdateEvent{
 		ObjectNew: &v1.Certificate{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-cert",
@@ -173,7 +172,7 @@ func TestUpdateFunc(t *testing.T) {
 		},
 	}
 
-	event2 := event.TypedUpdateEvent[client.Object]{
+	event2 := event.UpdateEvent{
 		ObjectNew: &v1.Certificate{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-cert-2",
