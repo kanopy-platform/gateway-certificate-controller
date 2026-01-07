@@ -125,7 +125,7 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 	return reconcile.Result{}, nil
 }
 
-func updateFunc(ctx context.Context, e event.TypedUpdateEvent[client.Object], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+func updateFunc(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
 		Name:      e.ObjectNew.GetName(),
 		Namespace: e.ObjectNew.GetNamespace(),
