@@ -502,3 +502,30 @@ func TestHTTPSolverLabelIdempotency(t *testing.T) {
 	assert.False(t, updated)
 	assert.Equal(t, "true", cert.Labels["use-istio-http01-solver"])
 }
+
+func TestGatewayReconcile_MixedServers(t *testing.T) {
+	t.Parallel()
+	helper := NewTestHelperWithGateways(
+		AppendServer(&networkingv1beta1.Server{
+			Hosts: []string{"http.example.com"},
+			Port: &networkingv1beta1.Port{
+				Number:   80,
+				Protocol: "HTTP",
+				Name:     "http",
+			},
+		}),
+	)
+
+	r, err := helper.Controller.Reconcile(context.TODO(), reconcileRequest())
+	assert.NoError(t, err)
+	assert.Equal(t, reconcile.Result{}, r)
+
+	assert.Equal(t, 1, helper.Controller.CreateCalled)
+	assert.Equal(t, 0, helper.Controller.UpdateCalled)
+
+	// only one cert should be created
+	certList, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).List(context.TODO(), metav1.ListOptions{})
+	assert.NoError(t, err)
+	assert.Len(t, certList.Items, 1, "Should only create one certificate.")
+	assert.Equal(t, TestCertificateName, certList.Items[0].Name)
+}
