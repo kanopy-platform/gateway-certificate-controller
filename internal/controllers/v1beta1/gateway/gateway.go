@@ -132,6 +132,11 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 	for _, s := range gateway.Spec.Servers {
 		log.V(1).Info("Inspecting server", "hosts", s.Hosts)
 
+		// skip servers without a TLS config
+		if s.Tls == nil {
+			continue
+		}
+
 		cert, err := c.certClient.CertmanagerV1().Certificates(c.certificateNamespace).Get(ctx, s.Tls.CredentialName, metav1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
