@@ -7,14 +7,14 @@ metadata:
     app: kanopy-gateway-cert-controller
 ...
 ---
-apiVersion: cert-manager.io/v1alpha2
+apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
   name: selfsigned-kanopy-gateway-cert-controller
 spec:
   selfSigned: {}
 ---
-apiVersion: cert-manager.io/v1alpha2
+apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: kanopy-gateway-cert-controller
@@ -92,7 +92,7 @@ spec:
   ports:
   - port: 80
     targetPort: 8081
-    name: metrics   
+    name: metrics
   - port: 8443
     targetPort: 8443
     name: webhooks
