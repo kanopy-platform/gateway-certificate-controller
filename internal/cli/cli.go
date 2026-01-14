@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/viper"
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
 
+	acmev1 "github.com/cert-manager/cert-manager/pkg/apis/acme/v1"
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	certmanagerversionedclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
@@ -46,6 +47,7 @@ func init() {
 	utilruntime.Must(networkingv1beta1.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(networkingv1.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(certmanagerv1.SchemeBuilder.AddToScheme(scheme))
+	utilruntime.Must(acmev1.SchemeBuilder.AddToScheme(scheme))
 }
 
 // RootCommand is the origin of all command life
@@ -77,6 +79,11 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().String("certificate-namespace", "cert-manager", "Namespace that stores Certificates")
 	cmd.PersistentFlags().String("default-issuer", "selfsigned", "The default ClusterIssuer")
 	cmd.PersistentFlags().String("http-solver-label", "use-istio-http01-solver", "The cert-manager http01 solver selector label to apply to Certificates")
+
+	// Fallback ingress flags for migration scenarios where DNS is not yet pointing to Istio
+	cmd.PersistentFlags().Bool("enable-fallback-ingress", false, "Enable fallback ingress creation for gateways where DNS is not pointing to Istio")
+	cmd.PersistentFlags().String("dns-disabled-annotation", "", "Annotation key indicating DNS is not pointing to Istio (required if enable-fallback-ingress is true)")
+	cmd.PersistentFlags().String("fallback-ingress-class", "", "IngressClass name for fallback ingress (required if enable-fallback-ingress is true)")
 
 	k8sFlags.AddFlags(cmd.PersistentFlags())
 	// no need to check err, this only checks if variadic args != 0
@@ -233,7 +240,31 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	serviceLister := coreV1Informer.Services().Lister()
 
 	if viper.GetBool("challenge-solver") {
-		cs := challengesolver.NewChallengeSolver(serviceLister, ic.NetworkingV1beta1(), cmc, glc, challengesolver.WithDryRun(dryRun))
+		fallbackCfg := challengesolver.FallbackIngressConfig{
+			Enabled:               viper.GetBool("enable-fallback-ingress"),
+			DNSDisabledAnnotation: viper.GetString("dns-disabled-annotation"),
+			IngressClass:          viper.GetString("fallback-ingress-class"),
+		}
+
+		if fallbackCfg.Enabled {
+			if fallbackCfg.DNSDisabledAnnotation == "" {
+				return fmt.Errorf("--dns-disabled-annotation is required when --enable-fallback-ingress is true")
+			}
+			if fallbackCfg.IngressClass == "" {
+				return fmt.Errorf("--fallback-ingress-class is required when --enable-fallback-ingress is true")
+			}
+			klog.Log.Info("fallback ingress enabled", "annotation", fallbackCfg.DNSDisabledAnnotation, "ingressClass", fallbackCfg.IngressClass)
+		}
+
+		cs := challengesolver.NewChallengeSolver(
+			serviceLister,
+			ic,
+			cmc,
+			clientset,
+			glc,
+			challengesolver.WithDryRun(dryRun),
+			challengesolver.WithFallbackIngress(fallbackCfg),
+		)
 
 		err = cs.SetupWithManager(ctx, mgr)
 		if err != nil {
