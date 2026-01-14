@@ -16,6 +16,7 @@ import (
 	"github.com/kanopy-platform/gateway-certificate-controller/internal/admission"
 	v1beta1gc "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1/garbagecollection"
 	v1beta1controllers "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1/gateway"
+	v1beta1orderwatcher "github.com/kanopy-platform/gateway-certificate-controller/internal/controllers/v1beta1/orderwatcher"
 	logzap "github.com/kanopy-platform/gateway-certificate-controller/internal/log/zap"
 
 	"github.com/spf13/cobra"
@@ -84,6 +85,10 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().Bool("enable-fallback-ingress", false, "Enable fallback ingress creation for gateways where DNS is not pointing to Istio")
 	cmd.PersistentFlags().String("dns-disabled-annotation", "", "Annotation key indicating DNS is not pointing to Istio (required if enable-fallback-ingress is true)")
 	cmd.PersistentFlags().String("fallback-ingress-class", "", "IngressClass name for fallback ingress (required if enable-fallback-ingress is true)")
+
+	// Event configuration for order watcher
+	cmd.PersistentFlags().String("cert-ready-event-reason", "CertificateReady", "Event reason emitted when certificate is successfully issued")
+	cmd.PersistentFlags().String("cert-failed-event-reason", "ChallengeFailed", "Event reason emitted when certificate challenge fails")
 
 	k8sFlags.AddFlags(cmd.PersistentFlags())
 	// no need to check err, this only checks if variadic args != 0
@@ -267,6 +272,24 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		)
 
 		err = cs.SetupWithManager(ctx, mgr)
+		if err != nil {
+			return err
+		}
+
+		eventCfg := v1beta1orderwatcher.EventConfig{
+			CertificateReadyReason:  viper.GetString("cert-ready-event-reason"),
+			CertificateFailedReason: viper.GetString("cert-failed-event-reason"),
+		}
+
+		ow := v1beta1orderwatcher.NewOrderWatcher(
+			cmc,
+			ic,
+			mgr.GetEventRecorderFor("gateway-certificate-controller"),
+			v1beta1orderwatcher.WithDryRun(dryRun),
+			v1beta1orderwatcher.WithEventConfig(eventCfg),
+		)
+
+		err = ow.SetupWithManager(ctx, mgr)
 		if err != nil {
 			return err
 		}
