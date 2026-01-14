@@ -16,6 +16,7 @@ import (
 
 	certmanagerfake "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/fake"
 	acmefake "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/typed/acme/v1/fake"
+	istiov1beta1 "istio.io/api/networking/v1beta1"
 	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
 	networkingv1beta1fake "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1beta1/fake"
@@ -24,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
 
@@ -32,10 +34,11 @@ type testHelper struct {
 	ccs *certmanagerfake.Clientset
 	scs *fakeServiceLister
 	glc *cache.GatewayLookupCache
+	kcs *k8sfake.Clientset
 }
 
 func (th *testHelper) newTestSolver() *challengesolver.ChallengeSolver {
-	return challengesolver.NewChallengeSolver(th.scs, th.ics.NetworkingV1beta1(), th.ccs, th.glc)
+	return challengesolver.NewChallengeSolver(th.scs, th.ics, th.ccs, th.kcs, th.glc)
 }
 
 func TestChallengeSolver(t *testing.T) {
@@ -92,6 +95,7 @@ func TestChallengeSolver(t *testing.T) {
 			ccs: certmanagerfake.NewSimpleClientset(),
 			scs: &fakeServiceLister{Service: test.service},
 			glc: cache.New(),
+			kcs: k8sfake.NewSimpleClientset(),
 		}
 
 		th.ccs.AcmeV1().(*acmefake.FakeAcmeV1).PrependReactor(
@@ -214,4 +218,201 @@ func (s *stub) List(selector labels.Selector) ([]*corev1.Service, error) {
 
 func (s *stub) Get(name string) (*corev1.Service, error) {
 	return nil, nil
+}
+
+func TestFallbackIngress(t *testing.T) {
+	const (
+		dnsDisabledAnnotation = "test.example.com/dns-disabled"
+		ingressClass          = "traefik"
+	)
+
+	for _, test := range []struct {
+		name              string
+		challenge         *acmev1.Challenge
+		service           *corev1.Service
+		gateway           *networkingv1beta1.Gateway
+		fallbackEnabled   bool
+		expectIngress     bool
+		expectVS          bool
+		pass              bool
+	}{
+		{
+			name:            "fallback disabled creates VirtualService",
+			challenge:       getChallenge("test-challenge", "example", "test.example.com"),
+			service:         getService("solver-svc", "example", "test.example.com", 8089),
+			gateway:         getGateway("test-gateway", "example", nil),
+			fallbackEnabled: false,
+			expectIngress:   false,
+			expectVS:        true,
+			pass:            true,
+		},
+		{
+			name:            "fallback enabled but annotation not present creates VirtualService",
+			challenge:       getChallenge("test-challenge", "example", "test.example.com"),
+			service:         getService("solver-svc", "example", "test.example.com", 8089),
+			gateway:         getGateway("test-gateway", "example", nil),
+			fallbackEnabled: true,
+			expectIngress:   false,
+			expectVS:        true,
+			pass:            true,
+		},
+		{
+			name:      "fallback enabled with dns-disabled annotation creates Ingress",
+			challenge: getChallenge("test-challenge", "example", "test.example.com"),
+			service:   getService("solver-svc", "example", "test.example.com", 8089),
+			gateway: getGateway("test-gateway", "example", map[string]string{
+				dnsDisabledAnnotation: "true",
+			}),
+			fallbackEnabled: true,
+			expectIngress:   true,
+			expectVS:        false,
+			pass:            true,
+		},
+		{
+			name:      "fallback enabled with dns-disabled=false creates VirtualService",
+			challenge: getChallenge("test-challenge", "example", "test.example.com"),
+			service:   getService("solver-svc", "example", "test.example.com", 8089),
+			gateway: getGateway("test-gateway", "example", map[string]string{
+				dnsDisabledAnnotation: "false",
+			}),
+			fallbackEnabled: true,
+			expectIngress:   false,
+			expectVS:        true,
+			pass:            true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ics := istiofake.NewSimpleClientset()
+
+			th := testHelper{
+				ics: ics,
+				ccs: certmanagerfake.NewSimpleClientset(),
+				scs: &fakeServiceLister{Service: test.service},
+				glc: cache.New(),
+				kcs: k8sfake.NewSimpleClientset(),
+			}
+
+			th.ccs.AcmeV1().(*acmefake.FakeAcmeV1).PrependReactor(
+				"get",
+				"challenges",
+				getChallengeFunc(test.challenge))
+
+			if test.gateway != nil {
+				th.glc.Add(fmt.Sprintf("%s/%s", test.gateway.Namespace, test.gateway.Name), test.challenge.Spec.DNSName)
+
+				th.ics.NetworkingV1beta1().(*networkingv1beta1fake.FakeNetworkingV1beta1).PrependReactor(
+					"get",
+					"gateways",
+					func(action k8stesting.Action) (bool, runtime.Object, error) {
+						return true, test.gateway, nil
+					})
+			}
+
+			vs := networkingv1beta1.VirtualService{}
+			vs.Name = test.challenge.Name
+			vs.Namespace = test.challenge.Namespace
+			th.ics.NetworkingV1beta1().(*networkingv1beta1fake.FakeNetworkingV1beta1).PrependReactor(
+				"patch",
+				"virtualservices",
+				func(action k8stesting.Action) (bool, runtime.Object, error) {
+					return true, &vs, nil
+				})
+
+			opts := []challengesolver.OptionsFunc{}
+			if test.fallbackEnabled {
+				opts = append(opts, challengesolver.WithFallbackIngress(challengesolver.FallbackIngressConfig{
+					Enabled:               true,
+					DNSDisabledAnnotation: dnsDisabledAnnotation,
+					IngressClass:          ingressClass,
+				}))
+			}
+
+			cs := challengesolver.NewChallengeSolver(th.scs, th.ics, th.ccs, th.kcs, th.glc, opts...)
+
+			out, err := cs.Solve(context.Background(), test.challenge)
+
+			if test.pass {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+			}
+
+			if test.expectVS {
+				assert.NotNil(t, out, "expected VirtualService to be created")
+			} else {
+				assert.Nil(t, out, "expected no VirtualService")
+			}
+
+			if test.expectIngress {
+				ingresses, err := th.kcs.NetworkingV1().Ingresses(test.challenge.Namespace).List(context.Background(), metav1.ListOptions{})
+				assert.NoError(t, err)
+				assert.Len(t, ingresses.Items, 1, "expected one Ingress to be created")
+
+				if len(ingresses.Items) > 0 {
+					ingress := ingresses.Items[0]
+					assert.Equal(t, test.challenge.Name, ingress.Name)
+					assert.Equal(t, ingressClass, *ingress.Spec.IngressClassName)
+					assert.Len(t, ingress.Spec.Rules, 1)
+					assert.Equal(t, test.challenge.Spec.DNSName, ingress.Spec.Rules[0].Host)
+					assert.Contains(t, ingress.Spec.Rules[0].HTTP.Paths[0].Path, "/.well-known/acme-challenge/")
+				}
+			}
+		})
+	}
+}
+
+func TestIngressFromChallengeMeta(t *testing.T) {
+	cm := challengesolver.ChallengeMeta{
+		Port:      8089,
+		Service:   "solver-svc",
+		DNSName:   "test.example.com",
+		Namespace: "test-ns",
+		Token:     "test-token-123",
+		Name:      "test-challenge",
+		UID:       types.UID("uid-12345"),
+		Gateway:   "test-ns/test-gateway",
+	}
+
+	ingress := challengesolver.IngressFromChallengeMeta(cm, "traefik")
+
+	assert.Equal(t, "test-challenge", ingress.Name)
+	assert.Equal(t, "test-ns", ingress.Namespace)
+	assert.Equal(t, "traefik", *ingress.Spec.IngressClassName)
+
+	assert.Len(t, ingress.OwnerReferences, 1)
+	assert.Equal(t, "Challenge", ingress.OwnerReferences[0].Kind)
+	assert.Equal(t, "test-challenge", ingress.OwnerReferences[0].Name)
+	assert.Equal(t, types.UID("uid-12345"), ingress.OwnerReferences[0].UID)
+
+	assert.Len(t, ingress.Spec.Rules, 1)
+	assert.Equal(t, "test.example.com", ingress.Spec.Rules[0].Host)
+	assert.Equal(t, "/.well-known/acme-challenge/test-token-123", ingress.Spec.Rules[0].HTTP.Paths[0].Path)
+	assert.Equal(t, "solver-svc", ingress.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name)
+	assert.Equal(t, int32(8089), ingress.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Port.Number)
+}
+
+func getGateway(name, namespace string, annotations map[string]string) *networkingv1beta1.Gateway {
+	return &networkingv1beta1.Gateway{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Gateway",
+			APIVersion: "networking.istio.io/v1beta1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Namespace:   namespace,
+			Annotations: annotations,
+		},
+		Spec: istiov1beta1.Gateway{
+			Servers: []*istiov1beta1.Server{
+				{
+					Hosts: []string{"test.example.com"},
+					Port: &istiov1beta1.Port{
+						Number:   443,
+						Name:     "https",
+						Protocol: "HTTPS",
+					},
+				},
+			},
+		},
+	}
 }
