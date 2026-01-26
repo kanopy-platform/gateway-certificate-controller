@@ -23,6 +23,7 @@ import (
 
 	v1certmanager "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	v1 "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const TestNamespace = "test"
@@ -475,9 +476,9 @@ func TestGatewayReconcile_SkipGatewayWithoutLabel(t *testing.T) {
 	helper := NewTestHelperWithGateways(WithLabels(map[string]string{}))
 
 	assert.Equal(t, 0, helper.Controller.CreateCalled)
-	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
+	_, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
 	assert.Error(t, err)
-	assert.Nil(t, cert)
+	assert.True(t, apierrors.IsNotFound(err))
 }
 
 func TestHTTPSolverLabelIdempotency(t *testing.T) {
