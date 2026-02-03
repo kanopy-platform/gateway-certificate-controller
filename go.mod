@@ -10,8 +10,8 @@ require (
 	github.com/spf13/viper v1.10.0
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/zap v1.27.0
-	istio.io/api v1.24.6
-	istio.io/client-go v1.24.6
+	istio.io/api v1.27.5
+	istio.io/client-go v1.27.5
 	k8s.io/api v0.32.11
 	k8s.io/apimachinery v0.32.11
 	k8s.io/cli-runtime v0.32.11
@@ -81,8 +81,8 @@ require (
 	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/time v0.8.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20241219192143-6b3ec007d9bb // indirect
-	google.golang.org/protobuf v1.36.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20250324211829-b45e905df463 // indirect
+	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
