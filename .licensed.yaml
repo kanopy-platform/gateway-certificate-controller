@@ -16,7 +16,8 @@ reviewed:
     - github.com/gogo/protobuf/**/*  # apache-2.0
     - github.com/magiconair/properties # bsd-2-clause
     - gopkg.in/ini.v1 # apache-2.0
-    - gopkg.in/yaml.v2 # apache-2.0
+    - gopkg.in/yaml.v2 # apache-2.0 + MIT (libyaml), both permissive
+    - go.yaml.in/yaml/v2@v2.4.3 # apache-2.0 + MIT (libyaml), licensed computes 'other' due to dual license files
     - golang.org/x/**/* # bsd-style
     - google.golang.org/**/*  # bsd-style
     - sigs.k8s.io/**/* # apache-2.0
