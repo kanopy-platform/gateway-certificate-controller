@@ -18,9 +18,7 @@ reviewed:
     - gopkg.in/ini.v1 # apache-2.0
     - gopkg.in/yaml.v2 # apache-2.0 + MIT (libyaml), both permissive
     - go.yaml.in/yaml/v2 # apache-2.0 + MIT (libyaml), licensed computes 'other' due to dual license files
-    - go.yaml.in/yaml/v2@v2.4.3 # versioned fallback
     - go.yaml.in/yaml/v3 # apache-2.0 + MIT (libyaml), licensed computes 'other' due to dual license files
-    - go.yaml.in/yaml/v3@v3.0.4 # versioned fallback
     - golang.org/x/**/* # bsd-style
     - google.golang.org/**/*  # bsd-style
     - sigs.k8s.io/**/* # apache-2.0
