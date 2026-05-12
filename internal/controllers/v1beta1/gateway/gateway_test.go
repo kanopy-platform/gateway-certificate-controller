@@ -172,7 +172,7 @@ type TestHelper struct {
 
 func NewTestHelper(opts *GatewayOptions) *TestHelper {
 	ics := istiofake.NewSimpleClientset()
-	ccs := certmanagerfake.NewSimpleClientset(opts.Certificates...)
+	ccs := certmanagerfake.NewClientset(opts.Certificates...)
 	return &TestHelper{
 		IstioClient: ics,
 		CertClient:  ccs,
@@ -205,7 +205,7 @@ func NewTestHelperWithCertificates(opts ...func(*GatewayOptions)) *TestHelper {
 		},
 		Spec: v1certmanager.CertificateSpec{
 			DNSNames: []string{"test1.example.com", "test2.example.com"},
-			IssuerRef: v1.ObjectReference{
+			IssuerRef: v1.IssuerReference{
 				Kind:  "ClusterIssuer",
 				Name:  "default",
 				Group: "cert-manager.io",
@@ -266,7 +266,7 @@ func assertCertificateUpdated(t *testing.T, helper *TestHelper) {
 
 func TestGatewayControllerReconcileNoError(t *testing.T) {
 	t.Parallel()
-	g := NewGatewayController(istiofake.NewSimpleClientset(), certmanagerfake.NewSimpleClientset(), WithCertificateNamespace("default"))
+	g := NewGatewayController(istiofake.NewSimpleClientset(), certmanagerfake.NewClientset(), WithCertificateNamespace("default"))
 	r, err := g.Reconcile(context.TODO(), reconcile.Request{})
 	assert.NoError(t, err)
 	assert.Equal(t, reconcile.Result{}, r)
@@ -441,7 +441,7 @@ func TestGatewayReconcile_DeleteCertificateSolver(t *testing.T) {
 			},
 			Spec: v1certmanager.CertificateSpec{
 				DNSNames: []string{"test1.example.com", "test2.example.com"},
-				IssuerRef: v1.ObjectReference{
+				IssuerRef: v1.IssuerReference{
 					Kind:  "ClusterIssuer",
 					Name:  "default",
 					Group: "cert-manager.io",

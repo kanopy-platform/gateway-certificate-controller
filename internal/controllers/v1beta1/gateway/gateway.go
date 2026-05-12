@@ -188,7 +188,7 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 		Spec: v1certmanager.CertificateSpec{
 			DNSNames:   getSortedHostsWithoutNamespace(server.Hosts),
 			SecretName: server.Tls.CredentialName,
-			IssuerRef: v1.ObjectReference{
+			IssuerRef: v1.IssuerReference{
 				Kind:  "ClusterIssuer",
 				Name:  issuer,
 				Group: "cert-manager.io",
