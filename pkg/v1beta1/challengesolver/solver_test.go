@@ -89,7 +89,7 @@ func TestChallengeSolver(t *testing.T) {
 	} {
 		th := testHelper{
 			ics: istiofake.NewSimpleClientset(),
-			ccs: certmanagerfake.NewSimpleClientset(),
+			ccs: certmanagerfake.NewClientset(),
 			scs: &fakeServiceLister{Service: test.service},
 			glc: cache.New(),
 		}
@@ -144,9 +144,9 @@ func TestChallengeSolver(t *testing.T) {
 			}
 
 			if test.noRequeue {
-				assert.False(t, resp.Requeue, test.name)
+				assert.True(t, resp.IsZero(), test.name)
 			} else {
-				assert.True(t, resp.Requeue, test.name)
+				assert.False(t, resp.IsZero(), test.name)
 			}
 		}
 

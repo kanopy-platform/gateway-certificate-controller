@@ -20,7 +20,7 @@ import (
 func TestNewGarbageCollectionController(t *testing.T) {
 	t.Parallel()
 
-	certmanagerClient := certmanagerfake.NewSimpleClientset()
+	certmanagerClient := certmanagerfake.NewClientset()
 	istioClient := istiofake.NewSimpleClientset()
 	dryRun := true
 
@@ -130,7 +130,7 @@ func TestGarbageCollectionControllerReconcile(t *testing.T) {
 
 	for _, test := range tests {
 		// setup
-		gc := NewGarbageCollectionController(istiofake.NewSimpleClientset(), certmanagerfake.NewSimpleClientset())
+		gc := NewGarbageCollectionController(istiofake.NewSimpleClientset(), certmanagerfake.NewClientset())
 
 		for _, cert := range test.certs {
 			_, err := gc.certmanagerClient.CertmanagerV1().Certificates(cert.Namespace).Create(context.TODO(), cert, metav1.CreateOptions{})
