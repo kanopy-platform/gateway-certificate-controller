@@ -40,14 +40,12 @@ func (th *testHelper) newTestSolver() *challengesolver.ChallengeSolver {
 
 func TestChallengeSolver(t *testing.T) {
 	for _, test := range []struct {
-		name           string
-		challenge      *acmev1.Challenge
-		service        *corev1.Service
-		virtualService *networkingv1beta1.VirtualService
-		gatewayName    string
-		pass           bool
-		validateVS     bool
-		noRequeue      bool
+		name        string
+		challenge   *acmev1.Challenge
+		service     *corev1.Service
+		gatewayName string
+		pass        bool
+		noRequeue   bool
 	}{
 		{
 			name:      "no challenge",
@@ -83,7 +81,6 @@ func TestChallengeSolver(t *testing.T) {
 			gatewayName: "gateway",
 			service:     getService("service", "example", "service.com", 8888),
 			pass:        true,
-			validateVS:  true,
 			noRequeue:   true,
 		},
 	} {
@@ -121,20 +118,12 @@ func TestChallengeSolver(t *testing.T) {
 
 		cs := th.newTestSolver()
 
-		out, err := cs.Solve(context.Background(), test.challenge)
+		err := cs.Solve(context.Background(), test.challenge)
 
 		if test.pass {
 			assert.NoError(t, err, test.name)
-
-			if test.validateVS {
-				assert.NotNil(t, out, test.name)
-			} else {
-				assert.Nil(t, out, test.name)
-			}
 		} else {
 			assert.Error(t, err, test.name)
-			assert.Nil(t, out, test.name)
-
 		}
 
 		if test.challenge != nil {
@@ -151,6 +140,93 @@ func TestChallengeSolver(t *testing.T) {
 		}
 
 	}
+}
+
+// spyChallengePlugin is a test double that records whether Solve was called.
+type spyChallengePlugin struct {
+	applicable  bool
+	solveCalled bool
+	err         error
+}
+
+func (s *spyChallengePlugin) Applicable(_ context.Context, _ *acmev1.Challenge) bool {
+	return s.applicable
+}
+
+func (s *spyChallengePlugin) Solve(_ context.Context, _ challengesolver.ChallengeMeta) error {
+	s.solveCalled = true
+	return s.err
+}
+
+// TestChallengeSolverCoordinatorDispatch verifies that Solve delegates to the
+// first applicable plugin and skips inapplicable ones. These tests are written
+// ahead of the coordinator implementation and are expected to FAIL until
+// Commit 5 wires the plugin dispatch into ChallengeSolver.Solve.
+func TestChallengeSolverCoordinatorDispatch(t *testing.T) {
+	challenge := getChallenge("service", "example", "service.com")
+	svc := getService("service", "example", "service.com", 8888)
+
+	buildSolver := func(vsApplicable, ingressApplicable bool) (*challengesolver.ChallengeSolver, *spyChallengePlugin, *spyChallengePlugin) {
+		th := testHelper{
+			ics: istiofake.NewSimpleClientset(),
+			ccs: certmanagerfake.NewClientset(),
+			scs: &fakeServiceLister{Service: svc},
+			glc: cache.New(),
+		}
+		th.glc.Add(fmt.Sprintf("%s/gateway", challenge.Namespace), challenge.Spec.DNSName)
+
+		vsPlugin := &spyChallengePlugin{applicable: vsApplicable}
+		ingressPlugin := &spyChallengePlugin{applicable: ingressApplicable}
+
+		cs := challengesolver.NewChallengeSolver(
+			th.scs, th.ics.NetworkingV1beta1(), th.ccs, th.glc,
+			challengesolver.WithPlugins(vsPlugin, ingressPlugin),
+		)
+		return cs, vsPlugin, ingressPlugin
+	}
+
+	t.Run("VirtualServicePlugin called when applicable", func(t *testing.T) {
+		cs, vsPlugin, ingressPlugin := buildSolver(true, false)
+		err := cs.Solve(context.Background(), challenge)
+		assert.NoError(t, err)
+		assert.True(t, vsPlugin.solveCalled, "VirtualServicePlugin.Solve should be called")
+		assert.False(t, ingressPlugin.solveCalled, "IngressPlugin.Solve should not be called")
+	})
+
+	t.Run("IngressPlugin called when applicable", func(t *testing.T) {
+		cs, vsPlugin, ingressPlugin := buildSolver(false, true)
+		err := cs.Solve(context.Background(), challenge)
+		assert.NoError(t, err)
+		assert.False(t, vsPlugin.solveCalled, "VirtualServicePlugin.Solve should not be called")
+		assert.True(t, ingressPlugin.solveCalled, "IngressPlugin.Solve should be called")
+	})
+
+	t.Run("short-circuit: only first applicable plugin is called", func(t *testing.T) {
+		// Both applicable — only the first (vsPlugin) should be called.
+		cs, vsPlugin, ingressPlugin := buildSolver(true, true)
+		err := cs.Solve(context.Background(), challenge)
+		assert.NoError(t, err)
+		assert.True(t, vsPlugin.solveCalled, "first applicable plugin should be called")
+		assert.False(t, ingressPlugin.solveCalled, "second plugin should not be called after short-circuit")
+	})
+
+	t.Run("plugin error is propagated", func(t *testing.T) {
+		th := testHelper{
+			ics: istiofake.NewSimpleClientset(),
+			ccs: certmanagerfake.NewClientset(),
+			scs: &fakeServiceLister{Service: svc},
+			glc: cache.New(),
+		}
+		th.glc.Add(fmt.Sprintf("%s/gateway", challenge.Namespace), challenge.Spec.DNSName)
+
+		errPlugin := &spyChallengePlugin{applicable: true, err: fmt.Errorf("plugin error")}
+		cs := challengesolver.NewChallengeSolver(
+			th.scs, th.ics.NetworkingV1beta1(), th.ccs, th.glc,
+			challengesolver.WithPlugins(errPlugin),
+		)
+		err := cs.Solve(context.Background(), challenge)
+		assert.Error(t, err)
+	})
 }
 
 func getChallenge(name, namespace, dnsName string) *acmev1.Challenge {
