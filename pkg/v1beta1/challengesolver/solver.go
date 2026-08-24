@@ -2,6 +2,7 @@ package challengesolver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/adler32"
 	"time"
@@ -15,7 +16,7 @@ import (
 
 	networkingv1beta1Client "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1beta1"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -93,32 +94,29 @@ func (cs *ChallengeSolver) Reconcile(ctx context.Context, req reconcile.Request)
 
 	challenge, err := cs.acmeClient.Challenges(req.Namespace).Get(ctx, req.Name, metav1.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			//for a reconciler this likely means deletion, owner references will clean up any existing VirtualServices
 			return reconcile.Result{}, nil
 		}
 
 		log.Error(err, "Error reconciling challenge, requeued")
-		return reconcile.Result{
-			Requeue: true,
-		}, err
+		return reconcile.Result{}, err
 	}
 
 	err = cs.Solve(ctx, challenge)
 	if err != nil {
 		//TODO type errors as recoverable or not
-		return reconcile.Result{
-			Requeue: true,
-		}, err
+		return reconcile.Result{}, err
 	}
 
 	return reconcile.Result{}, nil
 }
 
-// Solve resolves an ACME HTTP-01 challenge by creating the appropriate routing
-// resource. It looks up the gateway and solver Service, builds a ChallengeMeta,
-// then creates a VirtualService directly. The coordinator plugin-dispatch path
-// is introduced in a later commit.
+// Solve resolves an ACME HTTP-01 challenge by looking up the gateway and the
+// cert-manager solver Service, building a ChallengeMeta, then calling every
+// ChallengePlugin whose Applicable method returns true. All applicable plugins
+// are attempted regardless of individual errors; any errors are collected and
+// returned as a joined error so the reconciler can requeue once.
 func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challenge) error {
 	log := log.FromContext(ctx)
 	log.V(1).Info("Debug")
@@ -133,7 +131,6 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 	namespacedGateway, ok := cs.glc.Get(challenge.Spec.DNSName)
 	if !ok {
 		// requeue the request to wait for the lookup cache to populate
-		// probably needs backoff
 		return fmt.Errorf("host %s: gateway not found", challenge.Spec.DNSName)
 	}
 	log.V(1).Info(fmt.Sprintf("Debug: gateway found %s", namespacedGateway))
@@ -142,18 +139,15 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 
 	serviceList, err := cs.coreClient.List(svcSet.AsSelector())
 	if err != nil {
-		// requeue the request to wait for the service to appear in the api
 		return err
 	}
 
 	if len(serviceList) == 0 {
-		// requeue the request to wait for the service to appear in the api
 		return fmt.Errorf("no service matched selector: %s", fmt.Sprintf("%s=%s,%s=%s", acmev1.DomainLabelKey, httpDomainHash, acmev1.TokenLabelKey, tokenHash))
 	}
 	svc := serviceList[0]
 
 	if len(svc.Spec.Ports) == 0 {
-		// this is probably unrecoverable
 		return fmt.Errorf("service: %s, missing port definition", svc.Name)
 	}
 
@@ -168,15 +162,15 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 		Gateway:   namespacedGateway,
 	}
 
-	vsApply := VirtualServiceApplyFromChallengeMeta(cm)
-
-	if cs.dryRun {
-		log.Info(fmt.Sprintf("dry-run: patching %s.%s %s/%s", *vsApply.Kind, *vsApply.APIVersion, *vsApply.Namespace, *vsApply.Name))
-		return nil
+	var errs []error
+	for _, p := range cs.plugins {
+		if p.Applicable(ctx, challenge) {
+			if err := p.Solve(ctx, cm); err != nil {
+				errs = append(errs, err)
+			}
+		}
 	}
-
-	_, err = cs.networkingClient.VirtualServices(challenge.Namespace).Apply(ctx, vsApply, metav1.ApplyOptions{Force: true, FieldManager: "challengesolver"})
-	return err
+	return errors.Join(errs...)
 }
 
 func (cs *ChallengeSolver) Hash(in string) string {
