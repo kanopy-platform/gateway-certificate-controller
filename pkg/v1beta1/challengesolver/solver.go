@@ -13,12 +13,7 @@ import (
 
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
 
-	apinetv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
-	netapplymetav1 "istio.io/client-go/pkg/applyconfiguration/meta/v1"
-	netapplyv1beta1 "istio.io/client-go/pkg/applyconfiguration/networking/v1beta1"
 	networkingv1beta1Client "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1beta1"
-
-	istiov1beta1 "istio.io/api/networking/v1beta1"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -188,56 +183,4 @@ func (cs *ChallengeSolver) Hash(in string) string {
 	return fmt.Sprintf("%d", adler32.Checksum([]byte(in)))
 }
 
-func VirtualServiceApplyFromChallengeMeta(cm ChallengeMeta) *netapplyv1beta1.VirtualServiceApplyConfiguration {
 
-	vsAPIVersion := apinetv1beta1.SchemeGroupVersion.String()
-	vsKind := "VirtualService"
-
-	vsApply := netapplyv1beta1.VirtualServiceApplyConfiguration{
-		ObjectMetaApplyConfiguration: &netapplymetav1.ObjectMetaApplyConfiguration{},
-		Spec: &istiov1beta1.VirtualService{
-			Hosts:    []string{cm.DNSName},
-			Gateways: []string{cm.Gateway},
-			Http: []*istiov1beta1.HTTPRoute{
-				{
-					Name: "solver",
-					Match: []*istiov1beta1.HTTPMatchRequest{
-						{
-							Uri: &istiov1beta1.StringMatch{
-								MatchType: &istiov1beta1.StringMatch_Exact{
-									Exact: fmt.Sprintf("/.well-known/acme-challenge/%s", cm.Token),
-								},
-							},
-						},
-					},
-					Route: []*istiov1beta1.HTTPRouteDestination{
-						{
-							Destination: &istiov1beta1.Destination{
-								Host: cm.Service,
-								Port: &istiov1beta1.PortSelector{
-									Number: uint32(cm.Port),
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	vsApply.APIVersion = &vsAPIVersion
-	vsApply.Kind = &vsKind
-
-	apiVersion := acmev1.SchemeGroupVersion.String()
-	kind := "Challenge"
-	vsApply.Namespace = &cm.Namespace
-	vsApply.Name = &cm.Name
-	vsApply.OwnerReferences = append(vsApply.OwnerReferences, netapplymetav1.OwnerReferenceApplyConfiguration{
-		APIVersion: &apiVersion,
-		Kind:       &kind,
-		Name:       &cm.Name,
-		UID:        &cm.UID,
-	})
-
-	return &vsApply
-}
