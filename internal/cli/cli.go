@@ -30,6 +30,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	k8sinformers "k8s.io/client-go/informers"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	klog "sigs.k8s.io/controller-runtime/pkg/log"
@@ -46,6 +47,9 @@ func init() {
 	utilruntime.Must(networkingv1beta1.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(networkingv1.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(certmanagerv1.SchemeBuilder.AddToScheme(scheme))
+	// Register all k8s built-in types (including networking/v1 Ingress) so that
+	// mgr.GetClient() can SSA-apply Ingress resources via IngressPlugin.
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 }
 
 // RootCommand is the origin of all command life
@@ -77,6 +81,8 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().String("certificate-namespace", "cert-manager", "Namespace that stores Certificates")
 	cmd.PersistentFlags().String("default-issuer", "selfsigned", "The default ClusterIssuer")
 	cmd.PersistentFlags().String("http-solver-label", "use-istio-http01-solver", "The cert-manager http01 solver selector label to apply to Certificates")
+	cmd.PersistentFlags().String("ingress-class", "traefik", "IngressClassName for Ingress resources created by IngressPlugin")
+	cmd.PersistentFlags().String("ingress-solver-label", "use-ingress-http01-solver", "Label key applied to Certificates when the gateway uses the ingress HTTP-01 solver")
 
 	k8sFlags.AddFlags(cmd.PersistentFlags())
 	// no need to check err, this only checks if variadic args != 0
@@ -163,7 +169,8 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		v1beta1controllers.WithDefaultClusterIssuer(viper.GetString("default-issuer")),
 		v1beta1controllers.WithCertificateNamespace(viper.GetString("certificate-namespace")),
 		v1beta1controllers.WithGatewayLookupCache(glc),
-		v1beta1controllers.WithHTTPSolverLabel(viper.GetString("http-solver-label"))).
+		v1beta1controllers.WithHTTPSolverLabel(viper.GetString("http-solver-label")),
+		v1beta1controllers.WithIngressHTTPSolverLabel(viper.GetString("ingress-solver-label"))).
 		SetupWithManager(ctx, mgr); err != nil {
 		return err
 	}
