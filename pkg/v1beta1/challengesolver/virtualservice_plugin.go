@@ -16,8 +16,9 @@ import (
 )
 
 // VirtualServicePlugin creates Istio VirtualService resources to answer ACME
-// HTTP-01 challenges. It is applicable for all gateways that do NOT have the
-// ingress-http01 annotation set (normal operation).
+// HTTP-01 challenges. It is always applicable — a VirtualService is created
+// for every challenge regardless of whether the gateway also has the
+// ingress-http01 annotation set.
 type VirtualServicePlugin struct {
 	networkingClient networkingv1beta1Client.NetworkingV1beta1Interface
 	dryRun           bool
@@ -31,9 +32,10 @@ func NewVirtualServicePlugin(nc networkingv1beta1Client.NetworkingV1beta1Interfa
 	}
 }
 
-// Applicable returns true when the hostname is not flagged for ingress-based
-// solving. Cache-aware logic is introduced in a later commit; for now this
-// always returns true so that the plugin is the default routing path.
+// Applicable always returns true. A VirtualService is created for every
+// eligible challenge so that the route is in place as soon as DNS cuts over
+// to Istio, even if an Ingress is simultaneously being used during the
+// migration window.
 func (p *VirtualServicePlugin) Applicable(_ context.Context, _ *acmev1.Challenge) bool {
 	return true
 }

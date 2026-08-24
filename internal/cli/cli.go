@@ -233,7 +233,19 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	serviceLister := coreV1Informer.Services().Lister()
 
 	if viper.GetBool("challenge-solver") {
-		cs := challengesolver.NewChallengeSolver(serviceLister, ic.NetworkingV1beta1(), cmc, glc, challengesolver.WithDryRun(dryRun))
+		vsPlugin := challengesolver.NewVirtualServicePlugin(ic.NetworkingV1beta1(), dryRun)
+		ingressPlugin := challengesolver.NewIngressPlugin(
+			mgr.GetClient(),
+			glc,
+			viper.GetString("ingress-class"),
+			dryRun,
+		)
+
+		cs := challengesolver.NewChallengeSolver(
+			serviceLister, ic.NetworkingV1beta1(), cmc, glc,
+			challengesolver.WithDryRun(dryRun),
+			challengesolver.WithPlugins(vsPlugin, ingressPlugin),
+		)
 
 		err = cs.SetupWithManager(ctx, mgr)
 		if err != nil {
