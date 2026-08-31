@@ -2,6 +2,7 @@ package challengesolver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/adler32"
 	"time"
@@ -13,17 +14,11 @@ import (
 
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
 
-	apinetv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
-	netapplymetav1 "istio.io/client-go/pkg/applyconfiguration/meta/v1"
-	netapplyv1beta1 "istio.io/client-go/pkg/applyconfiguration/networking/v1beta1"
 	networkingv1beta1Client "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1beta1"
 
-	istiov1beta1 "istio.io/api/networking/v1beta1"
-
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/util/workqueue"
@@ -42,6 +37,7 @@ type ChallengeSolver struct {
 	certmanagerClient certmanagerversionedclient.Interface
 	glc               *cache.GatewayLookupCache
 	dryRun            bool
+	plugins           []ChallengePlugin
 }
 
 func NewChallengeSolver(cc corev1listers.ServiceLister, nc networkingv1beta1Client.NetworkingV1beta1Interface, cmc certmanagerversionedclient.Interface, glc *cache.GatewayLookupCache, opts ...OptionsFunc) *ChallengeSolver {
@@ -98,34 +94,35 @@ func (cs *ChallengeSolver) Reconcile(ctx context.Context, req reconcile.Request)
 
 	challenge, err := cs.acmeClient.Challenges(req.Namespace).Get(ctx, req.Name, metav1.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			//for a reconciler this likely means deletion, owner references will clean up any existing VirtualServices
 			return reconcile.Result{}, nil
 		}
 
 		log.Error(err, "Error reconciling challenge, requeued")
-		return reconcile.Result{
-			Requeue: true,
-		}, err
+		return reconcile.Result{}, err
 	}
 
-	_, err = cs.Solve(ctx, challenge)
+	err = cs.Solve(ctx, challenge)
 	if err != nil {
 		//TODO type errors as recoverable or not
-		return reconcile.Result{
-			Requeue: true,
-		}, err
+		return reconcile.Result{}, err
 	}
 
 	return reconcile.Result{}, nil
 }
 
-func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challenge) (*apinetv1beta1.VirtualService, error) {
+// Solve resolves an ACME HTTP-01 challenge by looking up the gateway and the
+// cert-manager solver Service, building a ChallengeMeta, then calling every
+// ChallengePlugin whose Applicable method returns true. All applicable plugins
+// are attempted regardless of individual errors; any errors are collected and
+// returned as a joined error so the reconciler can requeue once.
+func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challenge) error {
 	log := log.FromContext(ctx)
 	log.V(1).Info("Debug")
 
 	if challenge == nil {
-		return nil, nil
+		return nil
 	}
 
 	httpDomainHash := cs.Hash(challenge.Spec.DNSName)
@@ -134,8 +131,7 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 	namespacedGateway, ok := cs.glc.Get(challenge.Spec.DNSName)
 	if !ok {
 		// requeue the request to wait for the lookup cache to populate
-		// probably needs backoff
-		return nil, fmt.Errorf("host %s: gateway not found", challenge.Spec.DNSName)
+		return fmt.Errorf("host %s: gateway not found", challenge.Spec.DNSName)
 	}
 	log.V(1).Info(fmt.Sprintf("Debug: gateway found %s", namespacedGateway))
 
@@ -143,19 +139,16 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 
 	serviceList, err := cs.coreClient.List(svcSet.AsSelector())
 	if err != nil {
-		// requeue the request to wait for the service to appear in the api
-		return nil, err
+		return err
 	}
 
 	if len(serviceList) == 0 {
-		// requeue the request to wait for the service to appear in the api
-		return nil, fmt.Errorf("no service matched selector: %s", fmt.Sprintf("%s=%s,%s=%s", acmev1.DomainLabelKey, httpDomainHash, acmev1.TokenLabelKey, tokenHash))
+		return fmt.Errorf("no service matched selector: %s", fmt.Sprintf("%s=%s,%s=%s", acmev1.DomainLabelKey, httpDomainHash, acmev1.TokenLabelKey, tokenHash))
 	}
 	svc := serviceList[0]
 
 	if len(svc.Spec.Ports) == 0 {
-		// this is probably unrecoverable
-		return nil, fmt.Errorf("service: %s, missing port definition", svc.Name)
+		return fmt.Errorf("service: %s, missing port definition", svc.Name)
 	}
 
 	cm := ChallengeMeta{
@@ -168,82 +161,20 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 		UID:       challenge.UID,
 		Gateway:   namespacedGateway,
 	}
-	vsApply := VirtualServiceApplyFromChallengeMeta(cm)
 
-	// This controller is authoritative for these virtualservices so stomp any old versions that exist
-	if cs.dryRun {
-		log.Info(fmt.Sprintf("dry-run: patching %s.%s %s/%s", *vsApply.Kind, *vsApply.APIVersion, *vsApply.Namespace, *vsApply.Name))
-		return nil, nil
+	var errs []error
+	for _, p := range cs.plugins {
+		if p.Applicable(ctx, challenge) {
+			if err := p.Solve(ctx, cm); err != nil {
+				errs = append(errs, err)
+			}
+		}
 	}
-
-	return cs.networkingClient.VirtualServices(challenge.Namespace).Apply(ctx, vsApply, metav1.ApplyOptions{Force: true, FieldManager: "challengesolver"})
+	return errors.Join(errs...)
 }
 
 func (cs *ChallengeSolver) Hash(in string) string {
 	return fmt.Sprintf("%d", adler32.Checksum([]byte(in)))
 }
 
-type ChallengeMeta struct {
-	Port      int32
-	Service   string
-	DNSName   string
-	Namespace string
-	Token     string
-	Name      string
-	UID       types.UID
-	Gateway   string
-}
 
-func VirtualServiceApplyFromChallengeMeta(cm ChallengeMeta) *netapplyv1beta1.VirtualServiceApplyConfiguration {
-
-	vsAPIVersion := apinetv1beta1.SchemeGroupVersion.String()
-	vsKind := "VirtualService"
-
-	vsApply := netapplyv1beta1.VirtualServiceApplyConfiguration{
-		ObjectMetaApplyConfiguration: &netapplymetav1.ObjectMetaApplyConfiguration{},
-		Spec: &istiov1beta1.VirtualService{
-			Hosts:    []string{cm.DNSName},
-			Gateways: []string{cm.Gateway},
-			Http: []*istiov1beta1.HTTPRoute{
-				{
-					Name: "solver",
-					Match: []*istiov1beta1.HTTPMatchRequest{
-						{
-							Uri: &istiov1beta1.StringMatch{
-								MatchType: &istiov1beta1.StringMatch_Exact{
-									Exact: fmt.Sprintf("/.well-known/acme-challenge/%s", cm.Token),
-								},
-							},
-						},
-					},
-					Route: []*istiov1beta1.HTTPRouteDestination{
-						{
-							Destination: &istiov1beta1.Destination{
-								Host: cm.Service,
-								Port: &istiov1beta1.PortSelector{
-									Number: uint32(cm.Port),
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	vsApply.APIVersion = &vsAPIVersion
-	vsApply.Kind = &vsKind
-
-	apiVersion := acmev1.SchemeGroupVersion.String()
-	kind := "Challenge"
-	vsApply.Namespace = &cm.Namespace
-	vsApply.Name = &cm.Name
-	vsApply.OwnerReferences = append(vsApply.OwnerReferences, netapplymetav1.OwnerReferenceApplyConfiguration{
-		APIVersion: &apiVersion,
-		Kind:       &kind,
-		Name:       &cm.Name,
-		UID:        &cm.UID,
-	})
-
-	return &vsApply
-}

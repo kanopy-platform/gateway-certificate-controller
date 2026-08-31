@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
+	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
 	"github.com/stretchr/testify/assert"
 
 	networkingv1beta1 "istio.io/api/networking/v1beta1"
@@ -238,4 +239,139 @@ func TestGatewayLookupCacheEventFuncEdgeCases(t *testing.T) {
 	assert.NotPanics(t, func() { glc.UpdateFunc(gw, ngw) })
 	assert.NotPanics(t, func() { glc.UpdateFunc(ngw, gw) })
 	assert.NotPanics(t, func() { glc.DeleteFunc(ngw) })
+}
+
+func TestIngressSolverDirectMethods(t *testing.T) {
+	t.Parallel()
+	glc := cache.New()
+
+	assert.False(t, glc.GetIngressSolver("a.example.com"), "unknown host should return false")
+
+	glc.SetIngressSolver("a.example.com", true)
+	assert.True(t, glc.GetIngressSolver("a.example.com"))
+
+	// Idempotent set-true
+	glc.SetIngressSolver("a.example.com", true)
+	assert.True(t, glc.GetIngressSolver("a.example.com"))
+
+	// Unset
+	glc.SetIngressSolver("a.example.com", false)
+	assert.False(t, glc.GetIngressSolver("a.example.com"))
+
+	// Multiple independent hosts
+	glc.SetIngressSolver("b.example.com", true)
+	glc.SetIngressSolver("c.example.com", false)
+	assert.True(t, glc.GetIngressSolver("b.example.com"))
+	assert.False(t, glc.GetIngressSolver("c.example.com"))
+}
+
+func gatewayWithAnnotation(name, namespace, host, annotation string) *v1beta1.Gateway {
+	gw := &v1beta1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: networkingv1beta1.Gateway{
+			Servers: []*networkingv1beta1.Server{
+				{Hosts: []string{host}},
+			},
+		},
+	}
+	if annotation != "" {
+		gw.Annotations = map[string]string{
+			v1beta1labels.IngressHTTPSolverAnnotation: annotation,
+		}
+	}
+	return gw
+}
+
+func TestIngressSolverAddFunc(t *testing.T) {
+	t.Parallel()
+
+	t.Run("annotation absent: host not marked as ingress solver", func(t *testing.T) {
+		glc := cache.New()
+		gw := gatewayWithAnnotation("gw", "ns", "login.corp.example.com", "")
+		glc.AddFunc(gw)
+		assert.False(t, glc.GetIngressSolver("login.corp.example.com"))
+	})
+
+	t.Run("annotation true: host marked as ingress solver", func(t *testing.T) {
+		glc := cache.New()
+		gw := gatewayWithAnnotation("gw", "ns", "login.corp.example.com", "true")
+		glc.AddFunc(gw)
+		assert.True(t, glc.GetIngressSolver("login.corp.example.com"))
+		// gateway is still in the host lookup cache
+		_, ok := glc.Get("login.corp.example.com")
+		assert.True(t, ok)
+	})
+}
+
+func TestIngressSolverUpdateFunc(t *testing.T) {
+	t.Parallel()
+
+	t.Run("annotation added on update: host becomes ingress solver", func(t *testing.T) {
+		glc := cache.New()
+		original := gatewayWithAnnotation("gw", "ns", "login.corp.example.com", "")
+		updated := gatewayWithAnnotation("gw", "ns", "login.corp.example.com", "true")
+		glc.AddFunc(original)
+		assert.False(t, glc.GetIngressSolver("login.corp.example.com"))
+		glc.UpdateFunc(original, updated)
+		assert.True(t, glc.GetIngressSolver("login.corp.example.com"))
+	})
+
+	t.Run("annotation removed on update: host no longer ingress solver", func(t *testing.T) {
+		glc := cache.New()
+		original := gatewayWithAnnotation("gw", "ns", "login.corp.example.com", "true")
+		updated := gatewayWithAnnotation("gw", "ns", "login.corp.example.com", "")
+		glc.AddFunc(original)
+		assert.True(t, glc.GetIngressSolver("login.corp.example.com"))
+		glc.UpdateFunc(original, updated)
+		assert.False(t, glc.GetIngressSolver("login.corp.example.com"))
+	})
+
+	t.Run("removed host cleared from ingress solver map", func(t *testing.T) {
+		glc := cache.New()
+		original := &v1beta1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "gw", Namespace: "ns",
+				Annotations: map[string]string{v1beta1labels.IngressHTTPSolverAnnotation: "true"},
+			},
+			Spec: networkingv1beta1.Gateway{
+				Servers: []*networkingv1beta1.Server{
+					{Hosts: []string{"a.corp.example.com", "b.corp.example.com"}},
+				},
+			},
+		}
+		updated := &v1beta1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "gw", Namespace: "ns",
+				Annotations: map[string]string{v1beta1labels.IngressHTTPSolverAnnotation: "true"},
+			},
+			Spec: networkingv1beta1.Gateway{
+				Servers: []*networkingv1beta1.Server{
+					{Hosts: []string{"a.corp.example.com"}},
+				},
+			},
+		}
+		glc.AddFunc(original)
+		assert.True(t, glc.GetIngressSolver("b.corp.example.com"))
+		glc.UpdateFunc(original, updated)
+		// b.corp.example.com was removed from the gateway spec
+		assert.False(t, glc.GetIngressSolver("b.corp.example.com"))
+		assert.True(t, glc.GetIngressSolver("a.corp.example.com"))
+	})
+}
+
+func TestIngressSolverDeleteFunc(t *testing.T) {
+	t.Parallel()
+
+	glc := cache.New()
+	gw := gatewayWithAnnotation("gw", "ns", "login.corp.example.com", "true")
+	glc.AddFunc(gw)
+	assert.True(t, glc.GetIngressSolver("login.corp.example.com"))
+
+	glc.DeleteFunc(gw)
+	assert.False(t, glc.GetIngressSolver("login.corp.example.com"))
+	_, ok := glc.Get("login.corp.example.com")
+	assert.False(t, ok)
 }
