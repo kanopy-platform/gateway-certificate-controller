@@ -16,9 +16,9 @@ import (
 
 	certmanagerfake "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/fake"
 	acmefake "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/typed/acme/v1/fake"
-	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
-	networkingv1beta1fake "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1beta1/fake"
+	networkingv1fake "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1/fake"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -35,7 +35,7 @@ type testHelper struct {
 }
 
 func (th *testHelper) newTestSolver() *challengesolver.ChallengeSolver {
-	return challengesolver.NewChallengeSolver(th.scs, th.ics.NetworkingV1beta1(), th.ccs, th.glc)
+	return challengesolver.NewChallengeSolver(th.scs, th.ics.NetworkingV1(), th.ccs, th.glc)
 }
 
 func TestChallengeSolver(t *testing.T) {
@@ -43,7 +43,7 @@ func TestChallengeSolver(t *testing.T) {
 		name           string
 		challenge      *acmev1.Challenge
 		service        *corev1.Service
-		virtualService *networkingv1beta1.VirtualService
+		virtualService *networkingv1.VirtualService
 		gatewayName    string
 		pass           bool
 		validateVS     bool
@@ -105,10 +105,10 @@ func TestChallengeSolver(t *testing.T) {
 				th.glc.Add(fmt.Sprintf("%s/%s", test.challenge.Namespace, test.gatewayName), test.challenge.Spec.DNSName)
 			}
 
-			vs := networkingv1beta1.VirtualService{}
+			vs := networkingv1.VirtualService{}
 			vs.Name = test.challenge.Name
 			vs.Namespace = test.challenge.Namespace
-			th.ics.NetworkingV1beta1().(*networkingv1beta1fake.FakeNetworkingV1beta1).PrependReactor(
+			th.ics.NetworkingV1().(*networkingv1fake.FakeNetworkingV1).PrependReactor(
 				"patch",
 				"virtualservices",
 				func(action k8stesting.Action) (bool, runtime.Object, error) {

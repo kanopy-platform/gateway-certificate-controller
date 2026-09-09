@@ -7,8 +7,8 @@ import (
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
 	"github.com/stretchr/testify/assert"
 
-	networkingv1beta1 "istio.io/api/networking/v1beta1"
-	v1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	apinetworkingv1 "istio.io/api/networking/v1"
+	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -79,14 +79,14 @@ func TestGatewayLookupCache(t *testing.T) {
 
 func TestGatewayLookupCacheEventAddFunc(t *testing.T) {
 
-	gw := &v1beta1.Gateway{
+	gw := &networkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "testy",
 			Namespace: "example",
 		},
-		Spec: networkingv1beta1.Gateway{
-			Servers: []*networkingv1beta1.Server{
-				&networkingv1beta1.Server{
+		Spec: apinetworkingv1.Gateway{
+			Servers: []*apinetworkingv1.Server{
+				&apinetworkingv1.Server{
 					Hosts: []string{
 						"a.b.c.d",
 						"a.example.com",
@@ -113,14 +113,14 @@ func TestGatewayLookupCacheEventAddFunc(t *testing.T) {
 	_, ok = glc.Get("*.dns.example.com")
 	assert.False(t, ok)
 
-	gw = &v1beta1.Gateway{
+	gw = &networkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "missing",
 			Namespace: "example",
 		},
-		Spec: networkingv1beta1.Gateway{
-			Servers: []*networkingv1beta1.Server{
-				&networkingv1beta1.Server{
+		Spec: apinetworkingv1.Gateway{
+			Servers: []*apinetworkingv1.Server{
+				&apinetworkingv1.Server{
 					Hosts: []string{
 						"missing",
 					},
@@ -136,14 +136,14 @@ func TestGatewayLookupCacheEventAddFunc(t *testing.T) {
 }
 
 func TestGatewayLookupCacheEventUpdateFunc(t *testing.T) {
-	original := &v1beta1.Gateway{
+	original := &networkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "testy",
 			Namespace: "example",
 		},
-		Spec: networkingv1beta1.Gateway{
-			Servers: []*networkingv1beta1.Server{
-				&networkingv1beta1.Server{
+		Spec: apinetworkingv1.Gateway{
+			Servers: []*apinetworkingv1.Server{
+				&apinetworkingv1.Server{
 					Hosts: []string{
 						"a.b.c.d",
 						"a.example.com",
@@ -153,14 +153,14 @@ func TestGatewayLookupCacheEventUpdateFunc(t *testing.T) {
 		},
 	}
 
-	updated := &v1beta1.Gateway{
+	updated := &networkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "testy",
 			Namespace: "example",
 		},
-		Spec: networkingv1beta1.Gateway{
-			Servers: []*networkingv1beta1.Server{
-				&networkingv1beta1.Server{
+		Spec: apinetworkingv1.Gateway{
+			Servers: []*apinetworkingv1.Server{
+				&apinetworkingv1.Server{
 					Hosts: []string{
 						"a.b.c.d",
 						"b.example.com",
@@ -189,14 +189,14 @@ func TestGatewayLookupCacheEventUpdateFunc(t *testing.T) {
 
 }
 func TestGatewayLookupCacheEventDeleteFunc(t *testing.T) {
-	gw := &v1beta1.Gateway{
+	gw := &networkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "testy",
 			Namespace: "example",
 		},
-		Spec: networkingv1beta1.Gateway{
-			Servers: []*networkingv1beta1.Server{
-				&networkingv1beta1.Server{
+		Spec: apinetworkingv1.Gateway{
+			Servers: []*apinetworkingv1.Server{
+				&apinetworkingv1.Server{
 					Hosts: []string{
 						"a.b.c.d",
 						"a.example.com",
@@ -224,7 +224,7 @@ func TestGatewayLookupCacheEventDeleteFunc(t *testing.T) {
 func TestGatewayLookupCacheEventFuncEdgeCases(t *testing.T) {
 
 	thing := "notagatewaypointer"
-	gw := &v1beta1.Gateway{}
+	gw := &networkingv1.Gateway{}
 	glc := cache.New()
 	// Ensure that an error is returned if the input isn't a *Gateway
 	assert.NotPanics(t, func() { glc.AddFunc(thing) })
@@ -233,7 +233,7 @@ func TestGatewayLookupCacheEventFuncEdgeCases(t *testing.T) {
 	assert.NotPanics(t, func() { glc.DeleteFunc(thing) })
 
 	// Ensure no error is returned for a nil gateway, a nil gateway results in no changes
-	var ngw *v1beta1.Gateway
+	var ngw *networkingv1.Gateway
 	assert.NotPanics(t, func() { glc.AddFunc(ngw) })
 	assert.NotPanics(t, func() { glc.UpdateFunc(gw, ngw) })
 	assert.NotPanics(t, func() { glc.UpdateFunc(ngw, gw) })

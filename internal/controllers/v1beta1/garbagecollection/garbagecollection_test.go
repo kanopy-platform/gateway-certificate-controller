@@ -7,8 +7,8 @@ import (
 	v1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	certmanagerfake "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/fake"
 	"github.com/stretchr/testify/assert"
-	"istio.io/api/networking/v1beta1"
-	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	apinetworkingv1 "istio.io/api/networking/v1"
+	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -47,20 +47,20 @@ func TestGarbageCollectionControllerReconcile(t *testing.T) {
 		},
 	}
 
-	gatewayWithCert := &networkingv1beta1.Gateway{
+	gatewayWithCert := &networkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "gateway-123",
 			Namespace: "devops",
 		},
-		Spec: v1beta1.Gateway{
-			Servers: []*v1beta1.Server{
+		Spec: apinetworkingv1.Gateway{
+			Servers: []*apinetworkingv1.Server{
 				{
-					Tls: &v1beta1.ServerTLSSettings{
+					Tls: &apinetworkingv1.ServerTLSSettings{
 						CredentialName: "devops-gateway-123-diff-cert",
 					},
 				},
 				{
-					Tls: &v1beta1.ServerTLSSettings{
+					Tls: &apinetworkingv1.ServerTLSSettings{
 						CredentialName: "devops-gateway-123-cert", // should match certificate name
 					},
 				},
@@ -68,15 +68,15 @@ func TestGarbageCollectionControllerReconcile(t *testing.T) {
 		},
 	}
 
-	gatewayWithoutCert := &networkingv1beta1.Gateway{
+	gatewayWithoutCert := &networkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "gateway-123",
 			Namespace: "devops",
 		},
-		Spec: v1beta1.Gateway{
-			Servers: []*v1beta1.Server{
+		Spec: apinetworkingv1.Gateway{
+			Servers: []*apinetworkingv1.Server{
 				{
-					Tls: &v1beta1.ServerTLSSettings{
+					Tls: &apinetworkingv1.ServerTLSSettings{
 						CredentialName: "devops-gateway-123-diff-cert",
 					},
 				},
@@ -94,35 +94,35 @@ func TestGarbageCollectionControllerReconcile(t *testing.T) {
 	tests := []struct {
 		description  string
 		certs        []*v1.Certificate
-		gateways     []*networkingv1beta1.Gateway
+		gateways     []*networkingv1.Gateway
 		wantError    bool
 		wantNumCerts int
 	}{
 		{
 			description:  "Certificate points to existing Gateway, no-op",
 			certs:        []*v1.Certificate{certificate},
-			gateways:     []*networkingv1beta1.Gateway{gatewayWithCert},
+			gateways:     []*networkingv1.Gateway{gatewayWithCert},
 			wantError:    false,
 			wantNumCerts: 1,
 		},
 		{
 			description:  "Certificate points to missing Gateway, delete Certificate",
 			certs:        []*v1.Certificate{certificate},
-			gateways:     []*networkingv1beta1.Gateway{}, // no Gateway
+			gateways:     []*networkingv1.Gateway{}, // no Gateway
 			wantError:    false,
 			wantNumCerts: 0,
 		},
 		{
 			description:  "Reconcile called on a Certificate that doesn't exist anymore",
 			certs:        []*v1.Certificate{}, // no Certificate
-			gateways:     []*networkingv1beta1.Gateway{},
+			gateways:     []*networkingv1.Gateway{},
 			wantError:    true,
 			wantNumCerts: 0,
 		},
 		{
 			description:  "Gateway does not contain Certificate, delete Certificate",
 			certs:        []*v1.Certificate{certificate},
-			gateways:     []*networkingv1beta1.Gateway{gatewayWithoutCert},
+			gateways:     []*networkingv1.Gateway{gatewayWithoutCert},
 			wantError:    false,
 			wantNumCerts: 0,
 		},
@@ -137,7 +137,7 @@ func TestGarbageCollectionControllerReconcile(t *testing.T) {
 			assert.NoError(t, err, test.description)
 		}
 		for _, gateway := range test.gateways {
-			_, err := gc.istioClient.NetworkingV1beta1().Gateways(gateway.Namespace).Create(context.TODO(), gateway, metav1.CreateOptions{})
+			_, err := gc.istioClient.NetworkingV1().Gateways(gateway.Namespace).Create(context.TODO(), gateway, metav1.CreateOptions{})
 			assert.NoError(t, err, test.description)
 		}
 
@@ -195,16 +195,16 @@ func TestUpdateFunc(t *testing.T) {
 func TestIsCertificateInGatewaySpec(t *testing.T) {
 	t.Parallel()
 
-	gateway := &networkingv1beta1.Gateway{
-		Spec: v1beta1.Gateway{
-			Servers: []*v1beta1.Server{
+	gateway := &networkingv1.Gateway{
+		Spec: apinetworkingv1.Gateway{
+			Servers: []*apinetworkingv1.Server{
 				{
-					Tls: &v1beta1.ServerTLSSettings{
+					Tls: &apinetworkingv1.ServerTLSSettings{
 						CredentialName: "some-other-cred",
 					},
 				},
 				{
-					Tls: &v1beta1.ServerTLSSettings{
+					Tls: &apinetworkingv1.ServerTLSSettings{
 						CredentialName: "devops-gateway-123-https",
 					},
 				},
@@ -218,7 +218,7 @@ func TestIsCertificateInGatewaySpec(t *testing.T) {
 	tests := []struct {
 		description string
 		certificate string
-		gateway     *networkingv1beta1.Gateway
+		gateway     *networkingv1.Gateway
 		want        bool
 	}{
 		{

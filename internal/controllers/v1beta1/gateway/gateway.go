@@ -12,8 +12,8 @@ import (
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
 
 	certmanagerclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
-	"istio.io/api/networking/v1beta1"
-	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	apinetworkingv1 "istio.io/api/networking/v1"
+	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
 	istioinformers "istio.io/client-go/pkg/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,8 +36,8 @@ const (
 )
 
 type certificateHandler interface {
-	CreateCertificate(ctx context.Context, gateway *networkingv1beta1.Gateway, server *v1beta1.Server) error
-	UpdateCertificate(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1beta1.Gateway, server *v1beta1.Server) error
+	CreateCertificate(ctx context.Context, gateway *networkingv1.Gateway, server *apinetworkingv1.Server) error
+	UpdateCertificate(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1.Gateway, server *apinetworkingv1.Server) error
 }
 
 type GatewayController struct {
@@ -81,7 +81,7 @@ func (c *GatewayController) SetupWithManager(ctx context.Context, mgr manager.Ma
 
 	istioInformerFactory := istioinformers.NewSharedInformerFactoryWithOptions(c.istioClient, time.Second*30)
 
-	informer := istioInformerFactory.Networking().V1beta1().Gateways().Informer()
+	informer := istioInformerFactory.Networking().V1().Gateways().Informer()
 	if c.gatewayLookupCache != nil {
 		_, err := informer.AddEventHandler(k8scache.ResourceEventHandlerFuncs{
 			AddFunc:    c.gatewayLookupCache.AddFunc,
@@ -111,7 +111,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 	log := log.FromContext(ctx)
 	log.Info("Reconciling Gateway...", "reconcile", request.String())
 	log.V(1).Info("Debug")
-	gateway, err := c.istioClient.NetworkingV1beta1().Gateways(request.Namespace).Get(ctx, request.Name, metav1.GetOptions{})
+	gateway, err := c.istioClient.NetworkingV1().Gateways(request.Namespace).Get(ctx, request.Name, metav1.GetOptions{})
 
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -163,7 +163,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 	return reconcile.Result{}, nil
 }
 
-func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *networkingv1beta1.Gateway, server *v1beta1.Server) error {
+func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *networkingv1.Gateway, server *apinetworkingv1.Server) error {
 	log := log.FromContext(ctx)
 	issuer := c.clusterIssuer
 
@@ -171,7 +171,7 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 		issuer = i
 	}
 
-	if server.Tls.Mode != v1beta1.ServerTLSSettings_SIMPLE {
+	if server.Tls.Mode != apinetworkingv1.ServerTLSSettings_SIMPLE {
 		return nil
 	}
 
@@ -226,7 +226,7 @@ func getSortedHostsWithoutNamespace(serverHosts []string) []string {
 	return hosts
 }
 
-func (c *GatewayController) UpdateCertificate(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1beta1.Gateway, server *v1beta1.Server) error {
+func (c *GatewayController) UpdateCertificate(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1.Gateway, server *apinetworkingv1.Server) error {
 	log := log.FromContext(ctx)
 
 	cert, updatedIssuer := updateCertificateIssuer(ctx, cert, gateway)
@@ -251,7 +251,7 @@ func (c *GatewayController) UpdateCertificate(ctx context.Context, cert *v1certm
 
 	return nil
 }
-func updateHTTPSolver(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1beta1.Gateway, label string) (*v1certmanager.Certificate, bool) {
+func updateHTTPSolver(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1.Gateway, label string) (*v1certmanager.Certificate, bool) {
 	log := log.FromContext(ctx)
 
 	if h, ok := gateway.Annotations[v1beta1labels.HTTPSolverAnnotation]; ok && h == "true" {
@@ -277,7 +277,7 @@ func updateHTTPSolver(ctx context.Context, cert *v1certmanager.Certificate, gate
 	return cert, false
 
 }
-func updateCertificateIssuer(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1beta1.Gateway) (*v1certmanager.Certificate, bool) {
+func updateCertificateIssuer(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1.Gateway) (*v1certmanager.Certificate, bool) {
 	log := log.FromContext(ctx)
 	issuer := cert.Spec.IssuerRef.Name
 
@@ -291,7 +291,7 @@ func updateCertificateIssuer(ctx context.Context, cert *v1certmanager.Certificat
 	return cert, updated
 }
 
-func updateCertificateDNSNames(ctx context.Context, cert *v1certmanager.Certificate, server *v1beta1.Server) (*v1certmanager.Certificate, bool) {
+func updateCertificateDNSNames(ctx context.Context, cert *v1certmanager.Certificate, server *apinetworkingv1.Server) (*v1certmanager.Certificate, bool) {
 	hosts := getSortedHostsWithoutNamespace(server.Hosts)
 	updated := !reflect.DeepEqual(hosts, cert.Spec.DNSNames)
 	cert.Spec.DNSNames = hosts

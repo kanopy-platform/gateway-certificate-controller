@@ -25,7 +25,6 @@ import (
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	certmanagerversionedclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
-	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -43,7 +42,7 @@ import (
 var scheme = runtime.NewScheme()
 
 func init() {
-	utilruntime.Must(networkingv1beta1.SchemeBuilder.AddToScheme(scheme))
+	utilruntime.Must(networkingv1.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(networkingv1.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(certmanagerv1.SchemeBuilder.AddToScheme(scheme))
 }
@@ -233,7 +232,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	serviceLister := coreV1Informer.Services().Lister()
 
 	if viper.GetBool("challenge-solver") {
-		cs := challengesolver.NewChallengeSolver(serviceLister, ic.NetworkingV1beta1(), cmc, glc, challengesolver.WithDryRun(dryRun))
+		cs := challengesolver.NewChallengeSolver(serviceLister, ic.NetworkingV1(), cmc, glc, challengesolver.WithDryRun(dryRun))
 
 		err = cs.SetupWithManager(ctx, mgr)
 		if err != nil {

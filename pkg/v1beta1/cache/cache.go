@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/go-logr/logr"
-	v1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	klog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -55,9 +55,9 @@ func (glc *GatewayLookupCache) Get(host string) (string, bool) {
 }
 
 func (glc *GatewayLookupCache) AddFunc(obj interface{}) {
-	gw, ok := obj.(*v1beta1.Gateway)
+	gw, ok := obj.(*networkingv1.Gateway)
 	if !ok {
-		glc.logger.V(1).Info("Not a gateway.v1beta1.istio.io resource")
+		glc.logger.V(1).Info("Not a gateway.v1.istio.io resource")
 		return
 
 	}
@@ -72,9 +72,9 @@ func (glc *GatewayLookupCache) AddFunc(obj interface{}) {
 
 }
 func (glc *GatewayLookupCache) DeleteFunc(obj interface{}) {
-	gw, ok := obj.(*v1beta1.Gateway)
+	gw, ok := obj.(*networkingv1.Gateway)
 	if !ok {
-		glc.logger.V(1).Info("Not a gateway.v1beta1.istio.io resource")
+		glc.logger.V(1).Info("Not a gateway.v1.istio.io resource")
 		return
 	}
 
@@ -87,16 +87,16 @@ func (glc *GatewayLookupCache) DeleteFunc(obj interface{}) {
 }
 
 func (glc *GatewayLookupCache) UpdateFunc(oldObj, newObj interface{}) {
-	oldGW, ok := oldObj.(*v1beta1.Gateway)
+	oldGW, ok := oldObj.(*networkingv1.Gateway)
 	if !ok {
-		glc.logger.V(1).Info("Not a gateway.v1beta1.istio.io resource")
+		glc.logger.V(1).Info("Not a gateway.v1.istio.io resource")
 		return
 
 	}
 
-	newGW, ok := newObj.(*v1beta1.Gateway)
+	newGW, ok := newObj.(*networkingv1.Gateway)
 	if !ok {
-		glc.logger.V(1).Info("Not a gateway.v1beta1.istio.io resource")
+		glc.logger.V(1).Info("Not a gateway.v1.istio.io resource")
 		return
 
 	}
@@ -112,7 +112,7 @@ func (glc *GatewayLookupCache) UpdateFunc(oldObj, newObj interface{}) {
 	glc.Delete(deletes...)
 }
 
-func gwToHosts(gw *v1beta1.Gateway) []string {
+func gwToHosts(gw *networkingv1.Gateway) []string {
 	hosts := []string{}
 	if gw == nil {
 		return hosts

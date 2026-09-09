@@ -13,12 +13,12 @@ import (
 
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
 
-	apinetv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	apinetv1 "istio.io/client-go/pkg/apis/networking/v1"
 	netapplymetav1 "istio.io/client-go/pkg/applyconfiguration/meta/v1"
-	netapplyv1beta1 "istio.io/client-go/pkg/applyconfiguration/networking/v1beta1"
-	networkingv1beta1Client "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1beta1"
+	netapplyv1 "istio.io/client-go/pkg/applyconfiguration/networking/v1"
+	networkingv1Client "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1"
 
-	istiov1beta1 "istio.io/api/networking/v1beta1"
+	istiov1 "istio.io/api/networking/v1"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,14 +37,14 @@ import (
 
 type ChallengeSolver struct {
 	coreClient        corev1listers.ServiceLister
-	networkingClient  networkingv1beta1Client.NetworkingV1beta1Interface
+	networkingClient  networkingv1Client.NetworkingV1Interface
 	acmeClient        acmev1Client.AcmeV1Interface
 	certmanagerClient certmanagerversionedclient.Interface
 	glc               *cache.GatewayLookupCache
 	dryRun            bool
 }
 
-func NewChallengeSolver(cc corev1listers.ServiceLister, nc networkingv1beta1Client.NetworkingV1beta1Interface, cmc certmanagerversionedclient.Interface, glc *cache.GatewayLookupCache, opts ...OptionsFunc) *ChallengeSolver {
+func NewChallengeSolver(cc corev1listers.ServiceLister, nc networkingv1Client.NetworkingV1Interface, cmc certmanagerversionedclient.Interface, glc *cache.GatewayLookupCache, opts ...OptionsFunc) *ChallengeSolver {
 
 	cs := &ChallengeSolver{
 		coreClient:        cc,
@@ -120,7 +120,7 @@ func (cs *ChallengeSolver) Reconcile(ctx context.Context, req reconcile.Request)
 	return reconcile.Result{}, nil
 }
 
-func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challenge) (*apinetv1beta1.VirtualService, error) {
+func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challenge) (*apinetv1.VirtualService, error) {
 	log := log.FromContext(ctx)
 	log.V(1).Info("Debug")
 
@@ -194,33 +194,33 @@ type ChallengeMeta struct {
 	Gateway   string
 }
 
-func VirtualServiceApplyFromChallengeMeta(cm ChallengeMeta) *netapplyv1beta1.VirtualServiceApplyConfiguration {
+func VirtualServiceApplyFromChallengeMeta(cm ChallengeMeta) *netapplyv1.VirtualServiceApplyConfiguration {
 
-	vsAPIVersion := apinetv1beta1.SchemeGroupVersion.String()
+	vsAPIVersion := apinetv1.SchemeGroupVersion.String()
 	vsKind := "VirtualService"
 
-	vsApply := netapplyv1beta1.VirtualServiceApplyConfiguration{
+	vsApply := netapplyv1.VirtualServiceApplyConfiguration{
 		ObjectMetaApplyConfiguration: &netapplymetav1.ObjectMetaApplyConfiguration{},
-		Spec: &istiov1beta1.VirtualService{
+		Spec: &istiov1.VirtualService{
 			Hosts:    []string{cm.DNSName},
 			Gateways: []string{cm.Gateway},
-			Http: []*istiov1beta1.HTTPRoute{
+			Http: []*istiov1.HTTPRoute{
 				{
 					Name: "solver",
-					Match: []*istiov1beta1.HTTPMatchRequest{
+					Match: []*istiov1.HTTPMatchRequest{
 						{
-							Uri: &istiov1beta1.StringMatch{
-								MatchType: &istiov1beta1.StringMatch_Exact{
+							Uri: &istiov1.StringMatch{
+								MatchType: &istiov1.StringMatch_Exact{
 									Exact: fmt.Sprintf("/.well-known/acme-challenge/%s", cm.Token),
 								},
 							},
 						},
 					},
-					Route: []*istiov1beta1.HTTPRouteDestination{
+					Route: []*istiov1.HTTPRouteDestination{
 						{
-							Destination: &istiov1beta1.Destination{
+							Destination: &istiov1.Destination{
 								Host: cm.Service,
-								Port: &istiov1beta1.PortSelector{
+								Port: &istiov1.PortSelector{
 									Number: uint32(cm.Port),
 								},
 							},
