@@ -7,25 +7,28 @@ import (
 	"sync"
 
 	"github.com/go-logr/logr"
+	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
 	v1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	klog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// GatewayLookupCache provides concurrency safe lookups from dns host to namespace/gateway
-// Use New() as the Add, Delete, and Get functions all assume the cache map is non-nil
+// GatewayLookupCache provides concurrency-safe lookups from DNS hostname to
+// namespace/gateway-name. Use New() — Add, Delete, Get, SetIngressSolver, and
+// GetIngressSolver all assume the internal maps are non-nil.
 type GatewayLookupCache struct {
-	cache  map[string]string
-	mutex  sync.Mutex
-	logger logr.Logger
+	cache              map[string]string
+	ingressSolverHosts map[string]bool
+	mutex              sync.Mutex
+	logger             logr.Logger
 }
 
 func New() *GatewayLookupCache {
 	return &GatewayLookupCache{
-		cache:  make(map[string]string),
-		mutex:  sync.Mutex{},
-		logger: klog.Log,
+		cache:              make(map[string]string),
+		ingressSolverHosts: make(map[string]bool),
+		mutex:              sync.Mutex{},
+		logger:             klog.Log,
 	}
-
 }
 
 func (glc *GatewayLookupCache) Add(gateway string, hosts ...string) {
@@ -54,12 +57,35 @@ func (glc *GatewayLookupCache) Get(host string) (string, bool) {
 	return gw, ok
 }
 
+// SetIngressSolver marks or unmarks a hostname as requiring the Ingress-based
+// HTTP-01 solver. When enabled is false the entry is removed so that
+// GetIngressSolver returns false for unknown hosts.
+func (glc *GatewayLookupCache) SetIngressSolver(host string, enabled bool) {
+	glc.mutex.Lock()
+	defer glc.mutex.Unlock()
+
+	if enabled {
+		glc.ingressSolverHosts[host] = true
+	} else {
+		delete(glc.ingressSolverHosts, host)
+	}
+}
+
+// GetIngressSolver reports whether the given hostname is currently flagged for
+// Ingress-based HTTP-01 solving (i.e. its Gateway carries the
+// ingress-http01 annotation set to "true").
+func (glc *GatewayLookupCache) GetIngressSolver(host string) bool {
+	glc.mutex.Lock()
+	defer glc.mutex.Unlock()
+
+	return glc.ingressSolverHosts[host]
+}
+
 func (glc *GatewayLookupCache) AddFunc(obj interface{}) {
 	gw, ok := obj.(*v1beta1.Gateway)
 	if !ok {
 		glc.logger.V(1).Info("Not a gateway.v1beta1.istio.io resource")
 		return
-
 	}
 
 	if gw == nil {
@@ -70,7 +96,12 @@ func (glc *GatewayLookupCache) AddFunc(obj interface{}) {
 	hosts := gwToHosts(gw)
 	glc.Add(namespacedName, hosts...)
 
+	ingressSolver := gw.Annotations[v1beta1labels.IngressHTTPSolverAnnotation] == "true"
+	for _, host := range hosts {
+		glc.SetIngressSolver(host, ingressSolver)
+	}
 }
+
 func (glc *GatewayLookupCache) DeleteFunc(obj interface{}) {
 	gw, ok := obj.(*v1beta1.Gateway)
 	if !ok {
@@ -83,6 +114,9 @@ func (glc *GatewayLookupCache) DeleteFunc(obj interface{}) {
 	}
 
 	hosts := gwToHosts(gw)
+	for _, host := range hosts {
+		glc.SetIngressSolver(host, false)
+	}
 	glc.Delete(hosts...)
 }
 
@@ -91,14 +125,12 @@ func (glc *GatewayLookupCache) UpdateFunc(oldObj, newObj interface{}) {
 	if !ok {
 		glc.logger.V(1).Info("Not a gateway.v1beta1.istio.io resource")
 		return
-
 	}
 
 	newGW, ok := newObj.(*v1beta1.Gateway)
 	if !ok {
 		glc.logger.V(1).Info("Not a gateway.v1beta1.istio.io resource")
 		return
-
 	}
 
 	if oldGW == nil || newGW == nil {
@@ -110,6 +142,16 @@ func (glc *GatewayLookupCache) UpdateFunc(oldObj, newObj interface{}) {
 
 	glc.Add(namespacedName, adds...)
 	glc.Delete(deletes...)
+
+	// Sync the ingress-solver flag for all current hosts of the updated gateway.
+	ingressSolver := newGW.Annotations[v1beta1labels.IngressHTTPSolverAnnotation] == "true"
+	for _, host := range gwToHosts(newGW) {
+		glc.SetIngressSolver(host, ingressSolver)
+	}
+	// Clear the flag for hosts that were removed.
+	for _, host := range deletes {
+		glc.SetIngressSolver(host, false)
+	}
 }
 
 func gwToHosts(gw *v1beta1.Gateway) []string {

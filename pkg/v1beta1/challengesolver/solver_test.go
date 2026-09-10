@@ -40,19 +40,15 @@ func (th *testHelper) newTestSolver() *challengesolver.ChallengeSolver {
 
 func TestChallengeSolver(t *testing.T) {
 	for _, test := range []struct {
-		name           string
-		challenge      *acmev1.Challenge
-		service        *corev1.Service
-		virtualService *networkingv1beta1.VirtualService
-		gatewayName    string
-		pass           bool
-		validateVS     bool
-		noRequeue      bool
+		name        string
+		challenge   *acmev1.Challenge
+		service     *corev1.Service
+		gatewayName string
+		pass        bool
 	}{
 		{
-			name:      "no challenge",
-			pass:      true,
-			noRequeue: true,
+			name: "no challenge",
+			pass: true,
 		},
 		{
 			name:      "No Gateway",
@@ -83,8 +79,6 @@ func TestChallengeSolver(t *testing.T) {
 			gatewayName: "gateway",
 			service:     getService("service", "example", "service.com", 8888),
 			pass:        true,
-			validateVS:  true,
-			noRequeue:   true,
 		},
 	} {
 		th := testHelper{
@@ -121,20 +115,12 @@ func TestChallengeSolver(t *testing.T) {
 
 		cs := th.newTestSolver()
 
-		out, err := cs.Solve(context.Background(), test.challenge)
+		err := cs.Solve(context.Background(), test.challenge)
 
 		if test.pass {
 			assert.NoError(t, err, test.name)
-
-			if test.validateVS {
-				assert.NotNil(t, out, test.name)
-			} else {
-				assert.Nil(t, out, test.name)
-			}
 		} else {
 			assert.Error(t, err, test.name)
-			assert.Nil(t, out, test.name)
-
 		}
 
 		if test.challenge != nil {
@@ -142,15 +128,123 @@ func TestChallengeSolver(t *testing.T) {
 			if test.pass {
 				assert.NoError(t, err, test.name)
 			}
-
-			if test.noRequeue {
-				assert.True(t, resp.IsZero(), test.name)
-			} else {
-				assert.False(t, resp.IsZero(), test.name)
-			}
+			// Reconcile always returns an empty Result; requeue on error is
+			// handled by controller-runtime via the returned non-nil error.
+			assert.True(t, resp.IsZero(), test.name)
 		}
 
 	}
+}
+
+// spyChallengePlugin is a test double that records whether Solve was called.
+type spyChallengePlugin struct {
+	applicable  bool
+	solveCalled bool
+	err         error
+}
+
+func (s *spyChallengePlugin) Applicable(_ context.Context, _ *acmev1.Challenge) bool {
+	return s.applicable
+}
+
+func (s *spyChallengePlugin) Solve(_ context.Context, _ challengesolver.ChallengeMeta) error {
+	s.solveCalled = true
+	return s.err
+}
+
+// TestChallengeSolverCoordinatorDispatch verifies the coordinator's plugin
+// dispatch semantics: all applicable plugins are called, inapplicable ones are
+// skipped, and all errors are collected before the call returns.
+func TestChallengeSolverCoordinatorDispatch(t *testing.T) {
+	challenge := getChallenge("service", "example", "service.com")
+	svc := getService("service", "example", "service.com", 8888)
+
+	buildSolver := func(vsApplicable, ingressApplicable bool) (*challengesolver.ChallengeSolver, *spyChallengePlugin, *spyChallengePlugin) {
+		th := testHelper{
+			ics: istiofake.NewSimpleClientset(),
+			ccs: certmanagerfake.NewClientset(),
+			scs: &fakeServiceLister{Service: svc},
+			glc: cache.New(),
+		}
+		th.glc.Add(fmt.Sprintf("%s/gateway", challenge.Namespace), challenge.Spec.DNSName)
+
+		vsPlugin := &spyChallengePlugin{applicable: vsApplicable}
+		ingressPlugin := &spyChallengePlugin{applicable: ingressApplicable}
+
+		cs := challengesolver.NewChallengeSolver(
+			th.scs, th.ics.NetworkingV1beta1(), th.ccs, th.glc,
+			challengesolver.WithPlugins(vsPlugin, ingressPlugin),
+		)
+		return cs, vsPlugin, ingressPlugin
+	}
+
+	t.Run("VirtualServicePlugin called when applicable", func(t *testing.T) {
+		cs, vsPlugin, ingressPlugin := buildSolver(true, false)
+		err := cs.Solve(context.Background(), challenge)
+		assert.NoError(t, err)
+		assert.True(t, vsPlugin.solveCalled, "VirtualServicePlugin.Solve should be called")
+		assert.False(t, ingressPlugin.solveCalled, "IngressPlugin.Solve should not be called")
+	})
+
+	t.Run("IngressPlugin called when applicable", func(t *testing.T) {
+		cs, vsPlugin, ingressPlugin := buildSolver(false, true)
+		err := cs.Solve(context.Background(), challenge)
+		assert.NoError(t, err)
+		assert.False(t, vsPlugin.solveCalled, "VirtualServicePlugin.Solve should not be called")
+		assert.True(t, ingressPlugin.solveCalled, "IngressPlugin.Solve should be called")
+	})
+
+	t.Run("both applicable plugins are called", func(t *testing.T) {
+		cs, vsPlugin, ingressPlugin := buildSolver(true, true)
+		err := cs.Solve(context.Background(), challenge)
+		assert.NoError(t, err)
+		assert.True(t, vsPlugin.solveCalled, "VirtualServicePlugin.Solve should be called")
+		assert.True(t, ingressPlugin.solveCalled, "IngressPlugin.Solve should be called")
+	})
+
+	t.Run("first plugin errors but second plugin still runs", func(t *testing.T) {
+		th := testHelper{
+			ics: istiofake.NewSimpleClientset(),
+			ccs: certmanagerfake.NewClientset(),
+			scs: &fakeServiceLister{Service: svc},
+			glc: cache.New(),
+		}
+		th.glc.Add(fmt.Sprintf("%s/gateway", challenge.Namespace), challenge.Spec.DNSName)
+
+		vsPlugin := &spyChallengePlugin{applicable: true, err: fmt.Errorf("vs error")}
+		ingressPlugin := &spyChallengePlugin{applicable: true}
+
+		cs := challengesolver.NewChallengeSolver(
+			th.scs, th.ics.NetworkingV1beta1(), th.ccs, th.glc,
+			challengesolver.WithPlugins(vsPlugin, ingressPlugin),
+		)
+		err := cs.Solve(context.Background(), challenge)
+		assert.Error(t, err)
+		assert.True(t, vsPlugin.solveCalled, "first plugin should have been called")
+		assert.True(t, ingressPlugin.solveCalled, "second plugin should still run after first errors")
+	})
+
+	t.Run("all plugin errors are collected", func(t *testing.T) {
+		th := testHelper{
+			ics: istiofake.NewSimpleClientset(),
+			ccs: certmanagerfake.NewClientset(),
+			scs: &fakeServiceLister{Service: svc},
+			glc: cache.New(),
+		}
+		th.glc.Add(fmt.Sprintf("%s/gateway", challenge.Namespace), challenge.Spec.DNSName)
+
+		vsPlugin := &spyChallengePlugin{applicable: true, err: fmt.Errorf("vs error")}
+		ingressPlugin := &spyChallengePlugin{applicable: true, err: fmt.Errorf("ingress error")}
+
+		cs := challengesolver.NewChallengeSolver(
+			th.scs, th.ics.NetworkingV1beta1(), th.ccs, th.glc,
+			challengesolver.WithPlugins(vsPlugin, ingressPlugin),
+		)
+		err := cs.Solve(context.Background(), challenge)
+		assert.Error(t, err)
+		assert.ErrorContains(t, err, "vs error")
+		assert.ErrorContains(t, err, "ingress error")
+	})
 }
 
 func getChallenge(name, namespace, dnsName string) *acmev1.Challenge {

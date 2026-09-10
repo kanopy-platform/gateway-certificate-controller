@@ -37,3 +37,14 @@ func WithHTTPSolverLabel(l string) OptionsFunc {
 		gc.httpSolverLabel = l
 	}
 }
+
+// WithIngressHTTPSolverLabel sets the label key stamped on Certificates when
+// the gateway carries the ingress-http01 annotation. The label makes
+// migration-mode certificates queryable:
+//
+//	kubectl get certificates -n cert-manager -l <label>=true
+func WithIngressHTTPSolverLabel(l string) OptionsFunc {
+	return func(gc *GatewayController) {
+		gc.ingressSolverLabel = l
+	}
+}

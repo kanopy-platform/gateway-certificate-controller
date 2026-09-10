@@ -219,7 +219,7 @@ func NewTestHelperWithCertificates(opts ...func(*GatewayOptions)) *TestHelper {
 
 func setupControllerWithSpy(cs *istiofake.Clientset, certFake *certmanagerfake.Clientset, opts *GatewayOptions) *controllerSpy {
 	spy := &controllerSpy{
-		GatewayController: NewGatewayController(cs, certFake, WithDryRun(opts.DryRun), WithCertificateNamespace(TestCertNamespace), WithGatewayLookupCache(opts.GatewayLookupCache), WithHTTPSolverLabel("use-istio-http01-solver")),
+		GatewayController: NewGatewayController(cs, certFake, WithDryRun(opts.DryRun), WithCertificateNamespace(TestCertNamespace), WithGatewayLookupCache(opts.GatewayLookupCache), WithHTTPSolverLabel("use-istio-http01-solver"), WithIngressHTTPSolverLabel("use-ingress-http01-solver")),
 	}
 	spy.certHandler = spy
 	return spy
@@ -295,7 +295,7 @@ func TestGatewayReconcile_CallsCreateCertificateWithError(t *testing.T) {
 	helper.Controller.Error = true
 	r, err := helper.Controller.Reconcile(context.TODO(), reconcileRequest())
 	assert.Error(t, err)
-	assert.Equal(t, reconcile.Result{Requeue: true}, r)
+	assert.Equal(t, reconcile.Result{}, r)
 }
 
 func TestGatewayReconcile_CreateCertificateUsingCredentialName(t *testing.T) {
@@ -529,4 +529,101 @@ func TestGatewayReconcile_MixedServers(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, certList.Items, 1, "Should only create one certificate.")
 	assert.Equal(t, TestCertificateName, certList.Items[0].Name)
+}
+
+// --- IngressHTTPSolver label tests ---
+
+func TestGatewayReconcile_CreateCertificateWithIngressSolverLabel(t *testing.T) {
+	t.Parallel()
+	helper := NewTestHelperWithGateways(WithAnnotations(map[string]string{
+		v1beta1labels.IngressHTTPSolverAnnotation: "true",
+	}))
+	assertCreateCertificateCalled(t, helper)
+	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
+	assert.NoError(t, err)
+
+	l, ok := cert.Labels["use-ingress-http01-solver"]
+	assert.True(t, ok)
+	assert.Equal(t, "true", l)
+}
+
+func TestGatewayReconcile_UpdatesCertificateWithIngressSolverLabel(t *testing.T) {
+	helper := NewTestHelperWithCertificates(WithAnnotations(map[string]string{
+		v1beta1labels.IngressHTTPSolverAnnotation: "true",
+	}))
+	assertCertificateUpdated(t, helper)
+	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
+	assert.NoError(t, err)
+
+	l, ok := cert.Labels["use-ingress-http01-solver"]
+	assert.True(t, ok)
+	assert.Equal(t, "true", l)
+}
+
+func TestGatewayReconcile_RemovesIngressSolverLabelWhenAnnotationAbsent(t *testing.T) {
+	// Cert has the label; gateway annotation is absent — label must be removed.
+	helper := NewTestHelperWithGateways(AppendCertificates(
+		&v1certmanager.Certificate{
+			TypeMeta: metav1.TypeMeta{
+				Kind: "Certificate", APIVersion: "cert-manager.io/v1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      TestCertificateName,
+				Namespace: TestCertNamespace,
+				Labels: map[string]string{
+					"use-ingress-http01-solver": "true",
+				},
+			},
+			Spec: v1certmanager.CertificateSpec{
+				DNSNames: []string{"test1.example.com", "test2.example.com"},
+				IssuerRef: v1.IssuerReference{
+					Kind: "ClusterIssuer", Name: "default", Group: "cert-manager.io",
+				},
+			},
+		},
+	))
+	assertCertificateUpdated(t, helper)
+	cert, err := helper.CertClient.CertmanagerV1().Certificates(TestCertNamespace).Get(context.TODO(), TestCertificateName, metav1.GetOptions{})
+	assert.NoError(t, err)
+
+	l, ok := cert.Labels["use-ingress-http01-solver"]
+	assert.False(t, ok)
+	assert.Equal(t, "", l)
+}
+
+func TestIngressHTTPSolverLabelIdempotency(t *testing.T) {
+	t.Parallel()
+	cert := &v1certmanager.Certificate{
+		ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{}},
+	}
+	gw := &v1beta1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{v1beta1labels.IngressHTTPSolverAnnotation: "true"},
+		},
+	}
+	const label = "use-ingress-http01-solver"
+
+	cert, updated := updateIngressHTTPSolver(context.Background(), cert, gw, label)
+	assert.True(t, updated)
+	assert.Equal(t, "true", cert.Labels[label])
+
+	// Idempotent: second call must not mark as updated.
+	cert, updated = updateIngressHTTPSolver(context.Background(), cert, gw, label)
+	assert.False(t, updated)
+	assert.Equal(t, "true", cert.Labels[label])
+}
+
+func TestIngressHTTPSolverLabel_EmptyLabelNoOp(t *testing.T) {
+	t.Parallel()
+	cert := &v1certmanager.Certificate{
+		ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{}},
+	}
+	gw := &v1beta1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{v1beta1labels.IngressHTTPSolverAnnotation: "true"},
+		},
+	}
+	cert, updated := updateIngressHTTPSolver(context.Background(), cert, gw, "")
+	assert.False(t, updated)
+	assert.Empty(t, cert.Labels)
 }

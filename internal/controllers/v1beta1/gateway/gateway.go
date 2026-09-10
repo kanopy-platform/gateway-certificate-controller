@@ -50,6 +50,7 @@ type GatewayController struct {
 	gatewayLookupCache   *cache.GatewayLookupCache
 	certHandler          certificateHandler
 	httpSolverLabel      string
+	ingressSolverLabel   string
 }
 
 func NewGatewayController(istioClient istioversionedclient.Interface, certClient certmanagerclient.Interface, opts ...OptionsFunc) *GatewayController {
@@ -119,9 +120,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 		}
 
 		log.Error(err, "Error reconciling gateway, requeued")
-		return reconcile.Result{
-			Requeue: true,
-		}, err
+		return reconcile.Result{}, err
 	}
 
 	//If we don't have the tls management label or it isn't set to true return
@@ -141,21 +140,15 @@ func (c *GatewayController) Reconcile(ctx context.Context, request reconcile.Req
 		if err != nil {
 			if errors.IsNotFound(err) {
 				if err := c.certHandler.CreateCertificate(ctx, gateway, s); err != nil {
-					return reconcile.Result{
-						Requeue: true,
-					}, err
+					return reconcile.Result{}, err
 				}
 			} else {
-				return reconcile.Result{
-					Requeue: true,
-				}, err
+				return reconcile.Result{}, err
 			}
 		} else {
 			log.V(1).Info("Found certificate", "server", s)
 			if err := c.certHandler.UpdateCertificate(ctx, cert.DeepCopy(), gateway, s); err != nil {
-				return reconcile.Result{
-					Requeue: true,
-				}, err
+				return reconcile.Result{}, err
 			}
 		}
 	}
@@ -203,6 +196,12 @@ func (c *GatewayController) CreateCertificate(ctx context.Context, gateway *netw
 	if b, ok := gateway.Annotations[v1beta1labels.HTTPSolverAnnotation]; ok && b == "true" {
 		cert.Labels[c.httpSolverLabel] = "true"
 	}
+
+	if b, ok := gateway.Annotations[v1beta1labels.IngressHTTPSolverAnnotation]; ok && b == "true" {
+		if c.ingressSolverLabel != "" {
+			cert.Labels[c.ingressSolverLabel] = "true"
+		}
+	}
 	createOptions := metav1.CreateOptions{FieldManager: FieldManager}
 	if c.dryRun {
 		log.Info("[dryrun] create certificate", "cert", cert)
@@ -232,8 +231,9 @@ func (c *GatewayController) UpdateCertificate(ctx context.Context, cert *v1certm
 	cert, updatedIssuer := updateCertificateIssuer(ctx, cert, gateway)
 	cert, updatedDNSNames := updateCertificateDNSNames(ctx, cert, server)
 	cert, updatedHTTPSolver := updateHTTPSolver(ctx, cert, gateway, c.httpSolverLabel)
+	cert, updatedIngressSolver := updateIngressHTTPSolver(ctx, cert, gateway, c.ingressSolverLabel)
 
-	if updatedDNSNames || updatedIssuer || updatedHTTPSolver {
+	if updatedDNSNames || updatedIssuer || updatedHTTPSolver || updatedIngressSolver {
 		log.V(1).Info("pre-update", "cert", cert)
 
 		updateOptions := metav1.UpdateOptions{FieldManager: FieldManager}
@@ -296,4 +296,37 @@ func updateCertificateDNSNames(ctx context.Context, cert *v1certmanager.Certific
 	updated := !reflect.DeepEqual(hosts, cert.Spec.DNSNames)
 	cert.Spec.DNSNames = hosts
 	return cert, updated
+}
+
+// updateIngressHTTPSolver mirrors updateHTTPSolver for the ingress-http01
+// annotation. It stamps ingressSolverLabel="true" on the Certificate when the
+// gateway has the ingress-http01 annotation set, and removes the label when
+// the annotation is absent. When label is empty the function is a no-op.
+func updateIngressHTTPSolver(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1beta1.Gateway, label string) (*v1certmanager.Certificate, bool) {
+	log := log.FromContext(ctx)
+
+	if label == "" {
+		return cert, false
+	}
+
+	if h, ok := gateway.Annotations[v1beta1labels.IngressHTTPSolverAnnotation]; ok && h == "true" {
+		if cert.Labels == nil {
+			cert.Labels = map[string]string{}
+		}
+
+		if l, ok := cert.Labels[label]; !ok || (ok && l != "true") {
+			log.V(1).Info("Adding ingress solver label to cert")
+			cert.Labels[label] = "true"
+			return cert, true
+		}
+		return cert, false
+	}
+
+	if l, ok := cert.Labels[label]; ok && l == "true" {
+		log.V(1).Info("Removing ingress solver label from cert")
+		delete(cert.Labels, label)
+		return cert, true
+	}
+
+	return cert, false
 }

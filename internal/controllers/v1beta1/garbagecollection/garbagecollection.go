@@ -86,9 +86,7 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 	cert, err := certIface.Get(ctx, request.Name, metav1.GetOptions{})
 	if err != nil {
 		log.Error(err, "failed to Get Certificate")
-		return reconcile.Result{
-			Requeue: true,
-		}, err
+		return reconcile.Result{}, err
 	}
 
 	gatewayName, gatewayNamespace := v1beta1labels.ParseManagedLabel(cert.Labels[v1beta1labels.ManagedLabel])
@@ -112,9 +110,7 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 		log.Info(fmt.Sprintf("Deleting Certificate %s", request), "dry-run", c.dryRun)
 		if err := certIface.Delete(ctx, request.Name, deleteOptions); err != nil {
 			log.Error(err, "failed to Delete Certificate")
-			return reconcile.Result{
-				Requeue: true,
-			}, err
+			return reconcile.Result{}, err
 		}
 
 		delete(c.managedCerts, request.String())
