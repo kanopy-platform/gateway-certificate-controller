@@ -8,8 +8,8 @@ import (
 )
 
 // ChallengePlugin handles routing-resource creation for a single ACME HTTP-01
-// Challenge. The ChallengeSolver coordinator calls Applicable to select the
-// first matching plugin, then calls Solve to create the routing resource.
+// Challenge. The ChallengeSolver coordinator calls all Applicable 
+// plugins, then calls Solve to create the routing resource.
 type ChallengePlugin interface {
 	// Applicable reports whether this plugin should handle the given challenge.
 	Applicable(ctx context.Context, challenge *acmev1.Challenge) bool

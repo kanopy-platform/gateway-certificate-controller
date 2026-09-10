@@ -14,7 +14,7 @@ import (
 )
 
 // IngressPlugin creates Kubernetes Ingress resources to answer ACME HTTP-01
-// challenges through the legacy traefik ingress controller. It is applicable
+// challenges through the legacy ingress controller. It is applicable
 // only when the gateway carries the ingress-http01 annotation, signalling that
 // DNS still resolves to the legacy ingress during a vanity-hostname migration.
 type IngressPlugin struct {

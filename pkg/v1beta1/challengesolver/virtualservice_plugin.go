@@ -110,10 +110,3 @@ func virtualServiceApplyFromChallengeMeta(cm ChallengeMeta) *netapplyv1beta1.Vir
 
 	return &vsApply
 }
-
-// VirtualServiceApplyFromChallengeMeta is the exported form of
-// virtualServiceApplyFromChallengeMeta, retained for use by solver.go's
-// direct fallback path until the coordinator refactor is complete.
-func VirtualServiceApplyFromChallengeMeta(cm ChallengeMeta) *netapplyv1beta1.VirtualServiceApplyConfiguration {
-	return virtualServiceApplyFromChallengeMeta(cm)
-}
