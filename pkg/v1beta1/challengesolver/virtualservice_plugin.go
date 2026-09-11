@@ -5,12 +5,12 @@ import (
 	"fmt"
 
 	acmev1 "github.com/cert-manager/cert-manager/pkg/apis/acme/v1"
-	apinetv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	apinetv1 "istio.io/client-go/pkg/apis/networking/v1"
 	netapplymetav1 "istio.io/client-go/pkg/applyconfiguration/meta/v1"
-	netapplyv1beta1 "istio.io/client-go/pkg/applyconfiguration/networking/v1beta1"
-	networkingv1beta1Client "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1beta1"
+	netapplyv1 "istio.io/client-go/pkg/applyconfiguration/networking/v1"
+	networkingv1client "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1"
 
-	istiov1beta1 "istio.io/api/networking/v1beta1"
+	istiov1 "istio.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -20,12 +20,12 @@ import (
 // for every challenge regardless of whether the gateway also has the
 // ingress-http01 annotation set.
 type VirtualServicePlugin struct {
-	networkingClient networkingv1beta1Client.NetworkingV1beta1Interface
+	networkingClient networkingv1client.NetworkingV1Interface
 	dryRun           bool
 }
 
 // NewVirtualServicePlugin constructs a VirtualServicePlugin.
-func NewVirtualServicePlugin(nc networkingv1beta1Client.NetworkingV1beta1Interface, dryRun bool) *VirtualServicePlugin {
+func NewVirtualServicePlugin(nc networkingv1client.NetworkingV1Interface, dryRun bool) *VirtualServicePlugin {
 	return &VirtualServicePlugin{
 		networkingClient: nc,
 		dryRun:           dryRun,
@@ -58,32 +58,32 @@ func (p *VirtualServicePlugin) Solve(ctx context.Context, meta ChallengeMeta) er
 
 // virtualServiceApplyFromChallengeMeta constructs the SSA apply configuration
 // for an Istio VirtualService that routes the ACME challenge token path.
-func virtualServiceApplyFromChallengeMeta(cm ChallengeMeta) *netapplyv1beta1.VirtualServiceApplyConfiguration {
-	vsAPIVersion := apinetv1beta1.SchemeGroupVersion.String()
+func virtualServiceApplyFromChallengeMeta(cm ChallengeMeta) *netapplyv1.VirtualServiceApplyConfiguration {
+	vsAPIVersion := apinetv1.SchemeGroupVersion.String()
 	vsKind := "VirtualService"
 
-	vsApply := netapplyv1beta1.VirtualServiceApplyConfiguration{
+	vsApply := netapplyv1.VirtualServiceApplyConfiguration{
 		ObjectMetaApplyConfiguration: &netapplymetav1.ObjectMetaApplyConfiguration{},
-		Spec: &istiov1beta1.VirtualService{
+		Spec: &istiov1.VirtualService{
 			Hosts:    []string{cm.DNSName},
 			Gateways: []string{cm.Gateway},
-			Http: []*istiov1beta1.HTTPRoute{
+			Http: []*istiov1.HTTPRoute{
 				{
 					Name: "solver",
-					Match: []*istiov1beta1.HTTPMatchRequest{
+					Match: []*istiov1.HTTPMatchRequest{
 						{
-							Uri: &istiov1beta1.StringMatch{
-								MatchType: &istiov1beta1.StringMatch_Exact{
+							Uri: &istiov1.StringMatch{
+								MatchType: &istiov1.StringMatch_Exact{
 									Exact: fmt.Sprintf("/.well-known/acme-challenge/%s", cm.Token),
 								},
 							},
 						},
 					},
-					Route: []*istiov1beta1.HTTPRouteDestination{
+					Route: []*istiov1.HTTPRouteDestination{
 						{
-							Destination: &istiov1beta1.Destination{
+							Destination: &istiov1.Destination{
 								Host: cm.Service,
-								Port: &istiov1beta1.PortSelector{
+								Port: &istiov1.PortSelector{
 									Number: uint32(cm.Port),
 								},
 							},

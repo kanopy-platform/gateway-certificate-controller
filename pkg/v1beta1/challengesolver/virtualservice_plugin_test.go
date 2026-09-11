@@ -7,9 +7,9 @@ import (
 
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/challengesolver"
 	"github.com/stretchr/testify/assert"
-	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
-	networkingv1beta1fake "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1beta1/fake"
+	networkingv1fake "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	k8stesting "k8s.io/client-go/testing"
@@ -46,18 +46,18 @@ func TestVirtualServicePlugin_Solve(t *testing.T) {
 
 	t.Run("applies VirtualService with correct shape", func(t *testing.T) {
 		ics := istiofake.NewSimpleClientset()
-		returnedVS := &networkingv1beta1.VirtualService{}
+		returnedVS := &networkingv1.VirtualService{}
 		returnedVS.Name = name
 		returnedVS.Namespace = namespace
 
-		ics.NetworkingV1beta1().(*networkingv1beta1fake.FakeNetworkingV1beta1).PrependReactor(
+		ics.NetworkingV1().(*networkingv1fake.FakeNetworkingV1).PrependReactor(
 			"patch", "virtualservices",
 			func(action k8stesting.Action) (bool, runtime.Object, error) {
 				return true, returnedVS, nil
 			},
 		)
 
-		p := challengesolver.NewVirtualServicePlugin(ics.NetworkingV1beta1(), false)
+		p := challengesolver.NewVirtualServicePlugin(ics.NetworkingV1(), false)
 		err := p.Solve(context.Background(), meta)
 		assert.NoError(t, err)
 
@@ -70,7 +70,7 @@ func TestVirtualServicePlugin_Solve(t *testing.T) {
 
 	t.Run("dry-run skips apply and returns no error", func(t *testing.T) {
 		ics := istiofake.NewSimpleClientset()
-		p := challengesolver.NewVirtualServicePlugin(ics.NetworkingV1beta1(), true)
+		p := challengesolver.NewVirtualServicePlugin(ics.NetworkingV1(), true)
 		err := p.Solve(context.Background(), meta)
 		assert.NoError(t, err)
 		assert.Empty(t, ics.Actions(), "dry-run should not call the API")
@@ -79,15 +79,15 @@ func TestVirtualServicePlugin_Solve(t *testing.T) {
 	t.Run("VirtualService carries owner reference pointing to the Challenge", func(t *testing.T) {
 		ics := istiofake.NewSimpleClientset()
 		var capturedAction k8stesting.Action
-		ics.NetworkingV1beta1().(*networkingv1beta1fake.FakeNetworkingV1beta1).PrependReactor(
+		ics.NetworkingV1().(*networkingv1fake.FakeNetworkingV1).PrependReactor(
 			"patch", "virtualservices",
 			func(action k8stesting.Action) (bool, runtime.Object, error) {
 				capturedAction = action
-				return true, &networkingv1beta1.VirtualService{}, nil
+				return true, &networkingv1.VirtualService{}, nil
 			},
 		)
 
-		p := challengesolver.NewVirtualServicePlugin(ics.NetworkingV1beta1(), false)
+		p := challengesolver.NewVirtualServicePlugin(ics.NetworkingV1(), false)
 		err := p.Solve(context.Background(), meta)
 		assert.NoError(t, err)
 		assert.NotNil(t, capturedAction)

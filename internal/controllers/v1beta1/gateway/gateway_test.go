@@ -596,7 +596,7 @@ func TestIngressHTTPSolverLabelIdempotency(t *testing.T) {
 	cert := &v1certmanager.Certificate{
 		ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{}},
 	}
-	gw := &v1beta1.Gateway{
+	gw := &clientnetworkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{v1beta1labels.IngressHTTPSolverAnnotation: "true"},
 		},
@@ -618,7 +618,7 @@ func TestIngressHTTPSolverLabel_EmptyLabelNoOp(t *testing.T) {
 	cert := &v1certmanager.Certificate{
 		ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{}},
 	}
-	gw := &v1beta1.Gateway{
+	gw := &clientnetworkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{v1beta1labels.IngressHTTPSolverAnnotation: "true"},
 		},

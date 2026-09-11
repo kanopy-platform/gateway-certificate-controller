@@ -302,7 +302,7 @@ func updateCertificateDNSNames(ctx context.Context, cert *v1certmanager.Certific
 // annotation. It stamps ingressSolverLabel="true" on the Certificate when the
 // gateway has the ingress-http01 annotation set, and removes the label when
 // the annotation is absent. When label is empty the function is a no-op.
-func updateIngressHTTPSolver(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1beta1.Gateway, label string) (*v1certmanager.Certificate, bool) {
+func updateIngressHTTPSolver(ctx context.Context, cert *v1certmanager.Certificate, gateway *networkingv1.Gateway, label string) (*v1certmanager.Certificate, bool) {
 	log := log.FromContext(ctx)
 
 	if label == "" {

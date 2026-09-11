@@ -265,14 +265,14 @@ func TestIngressSolverDirectMethods(t *testing.T) {
 	assert.False(t, glc.GetIngressSolver("c.example.com"))
 }
 
-func gatewayWithAnnotation(name, namespace, host, annotation string) *v1beta1.Gateway {
-	gw := &v1beta1.Gateway{
+func gatewayWithAnnotation(name, namespace, host, annotation string) *networkingv1.Gateway {
+	gw := &networkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: networkingv1beta1.Gateway{
-			Servers: []*networkingv1beta1.Server{
+		Spec: apinetworkingv1.Gateway{
+			Servers: []*apinetworkingv1.Server{
 				{Hosts: []string{host}},
 			},
 		},
@@ -331,24 +331,24 @@ func TestIngressSolverUpdateFunc(t *testing.T) {
 
 	t.Run("removed host cleared from ingress solver map", func(t *testing.T) {
 		glc := cache.New()
-		original := &v1beta1.Gateway{
+		original := &networkingv1.Gateway{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "gw", Namespace: "ns",
 				Annotations: map[string]string{v1beta1labels.IngressHTTPSolverAnnotation: "true"},
 			},
-			Spec: networkingv1beta1.Gateway{
-				Servers: []*networkingv1beta1.Server{
+			Spec: apinetworkingv1.Gateway{
+				Servers: []*apinetworkingv1.Server{
 					{Hosts: []string{"a.corp.example.com", "b.corp.example.com"}},
 				},
 			},
 		}
-		updated := &v1beta1.Gateway{
+		updated := &networkingv1.Gateway{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "gw", Namespace: "ns",
 				Annotations: map[string]string{v1beta1labels.IngressHTTPSolverAnnotation: "true"},
 			},
-			Spec: networkingv1beta1.Gateway{
-				Servers: []*networkingv1beta1.Server{
+			Spec: apinetworkingv1.Gateway{
+				Servers: []*apinetworkingv1.Server{
 					{Hosts: []string{"a.corp.example.com"}},
 				},
 			},

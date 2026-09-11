@@ -172,7 +172,7 @@ func TestChallengeSolverCoordinatorDispatch(t *testing.T) {
 		ingressPlugin := &spyChallengePlugin{applicable: ingressApplicable}
 
 		cs := challengesolver.NewChallengeSolver(
-			th.scs, th.ics.NetworkingV1beta1(), th.ccs, th.glc,
+			th.scs, th.ics.NetworkingV1(), th.ccs, th.glc,
 			challengesolver.WithPlugins(vsPlugin, ingressPlugin),
 		)
 		return cs, vsPlugin, ingressPlugin
@@ -215,7 +215,7 @@ func TestChallengeSolverCoordinatorDispatch(t *testing.T) {
 		ingressPlugin := &spyChallengePlugin{applicable: true}
 
 		cs := challengesolver.NewChallengeSolver(
-			th.scs, th.ics.NetworkingV1beta1(), th.ccs, th.glc,
+			th.scs, th.ics.NetworkingV1(), th.ccs, th.glc,
 			challengesolver.WithPlugins(vsPlugin, ingressPlugin),
 		)
 		err := cs.Solve(context.Background(), challenge)
@@ -237,7 +237,7 @@ func TestChallengeSolverCoordinatorDispatch(t *testing.T) {
 		ingressPlugin := &spyChallengePlugin{applicable: true, err: fmt.Errorf("ingress error")}
 
 		cs := challengesolver.NewChallengeSolver(
-			th.scs, th.ics.NetworkingV1beta1(), th.ccs, th.glc,
+			th.scs, th.ics.NetworkingV1(), th.ccs, th.glc,
 			challengesolver.WithPlugins(vsPlugin, ingressPlugin),
 		)
 		err := cs.Solve(context.Background(), challenge)
