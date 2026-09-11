@@ -146,7 +146,7 @@ func TestGarbageCollectionControllerReconcile(t *testing.T) {
 
 		if test.wantError {
 			assert.Error(t, err, test.description)
-			assert.Equal(t, reconcile.Result{Requeue: true}, r)
+			assert.Equal(t, reconcile.Result{}, r)
 		} else {
 			assert.NoError(t, err, test.description)
 			assert.Equal(t, reconcile.Result{}, r)

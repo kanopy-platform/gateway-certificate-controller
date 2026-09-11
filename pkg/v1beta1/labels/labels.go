@@ -18,6 +18,7 @@ var (
 	ManagedLabel                        = fmt.Sprintf("%s/%s", version.String(), "istio-cert-controller-managed")
 	IssueTemporaryCertificateAnnotation = fmt.Sprintf("%s/%s", version.String(), IssueTemporaryCertificate)
 	HTTPSolverAnnotation                = fmt.Sprintf("%s/%s", version.String(), HTTP01)
+	IngressHTTPSolverAnnotation         = fmt.Sprintf("%s/%s", version.String(), IngressHTTP01)
 )
 
 const (
@@ -38,6 +39,9 @@ const (
 
 	//HTTP01
 	HTTP01 = "http01"
+
+	//IngressHTTP01
+	IngressHTTP01 = "ingress-http01"
 )
 
 func InjectSimpleCredentialNameLabelSelector() string {
