@@ -9,7 +9,7 @@ import (
 	certmanagerinformers "github.com/cert-manager/cert-manager/pkg/client/informers/externalversions"
 	"github.com/kanopy-platform/gateway-certificate-controller/internal/prometheus"
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
-	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istioversionedclient "istio.io/client-go/pkg/clientset/versioned"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -97,7 +97,7 @@ func (c *GarbageCollectionController) Reconcile(ctx context.Context, request rec
 		deleteOptions.DryRun = []string{metav1.DryRunAll}
 	}
 
-	gateway, err := c.istioClient.NetworkingV1beta1().Gateways(gatewayNamespace).Get(ctx, gatewayName, metav1.GetOptions{})
+	gateway, err := c.istioClient.NetworkingV1().Gateways(gatewayNamespace).Get(ctx, gatewayName, metav1.GetOptions{})
 	if k8serrors.IsNotFound(err) {
 		log.V(1).Info("Gateway not found, marking Certificate for deletion", "gateway-namespace", gatewayNamespace, "gateway", gatewayName)
 		deleteCert = true
@@ -127,7 +127,7 @@ func updateFunc(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateL
 	}})
 }
 
-func isCertificateInGatewaySpec(certificate string, gateway *networkingv1beta1.Gateway) bool {
+func isCertificateInGatewaySpec(certificate string, gateway *networkingv1.Gateway) bool {
 	for _, s := range gateway.Spec.Servers {
 		if s.Tls != nil && s.Tls.CredentialName == certificate {
 			return true

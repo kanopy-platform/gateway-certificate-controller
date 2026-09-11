@@ -44,6 +44,8 @@ import (
 var scheme = runtime.NewScheme()
 
 func init() {
+	// v1beta1 stays registered so the mutating webhook decoder can still
+	// handle Gateways submitted at v1beta1; see internal/admission.
 	utilruntime.Must(networkingv1beta1.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(networkingv1.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(certmanagerv1.SchemeBuilder.AddToScheme(scheme))
@@ -240,7 +242,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 	serviceLister := coreV1Informer.Services().Lister()
 
 	if viper.GetBool("challenge-solver") {
-		vsPlugin := challengesolver.NewVirtualServicePlugin(ic.NetworkingV1beta1(), dryRun)
+		vsPlugin := challengesolver.NewVirtualServicePlugin(ic.NetworkingV1(), dryRun)
 		ingressPlugin := challengesolver.NewIngressPlugin(
 			mgr.GetClient(),
 			glc,
@@ -249,7 +251,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 		)
 
 		cs := challengesolver.NewChallengeSolver(
-			serviceLister, ic.NetworkingV1beta1(), cmc, glc,
+			serviceLister, ic.NetworkingV1(), cmc, glc,
 			challengesolver.WithDryRun(dryRun),
 			challengesolver.WithPlugins(vsPlugin, ingressPlugin),
 		)
