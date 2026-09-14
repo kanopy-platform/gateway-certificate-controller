@@ -9,7 +9,7 @@ import (
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/challengesolver"
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
 	"github.com/stretchr/testify/assert"
-	networkingv1beta1istio "istio.io/client-go/pkg/apis/networking/v1beta1"
+	apinetworkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -21,7 +21,7 @@ import (
 func ingressTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(s)
-	_ = networkingv1beta1istio.SchemeBuilder.AddToScheme(s)
+	_ = apinetworkingv1.SchemeBuilder.AddToScheme(s)
 	return s
 }
 
@@ -157,7 +157,7 @@ func TestIngressSolverApplicableViaEventHandlers(t *testing.T) {
 	// Round-trip test: Gateway informer event marks hosts; plugins see the flag.
 	glc := cache.New()
 
-	gw := &networkingv1beta1istio.Gateway{
+	gw := &apinetworkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gw", Namespace: "routing",
 			Annotations: map[string]string{v1beta1labels.IngressHTTPSolverAnnotation: "true"},

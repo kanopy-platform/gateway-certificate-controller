@@ -14,8 +14,7 @@ import (
 
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
 
-	networkingv1beta1Client "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1beta1"
-
+	networkingv1Client "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -32,7 +31,7 @@ import (
 
 type ChallengeSolver struct {
 	coreClient        corev1listers.ServiceLister
-	networkingClient  networkingv1beta1Client.NetworkingV1beta1Interface
+	networkingClient  networkingv1Client.NetworkingV1Interface
 	acmeClient        acmev1Client.AcmeV1Interface
 	certmanagerClient certmanagerversionedclient.Interface
 	glc               *cache.GatewayLookupCache
@@ -40,7 +39,7 @@ type ChallengeSolver struct {
 	plugins           []ChallengePlugin
 }
 
-func NewChallengeSolver(cc corev1listers.ServiceLister, nc networkingv1beta1Client.NetworkingV1beta1Interface, cmc certmanagerversionedclient.Interface, glc *cache.GatewayLookupCache, opts ...OptionsFunc) *ChallengeSolver {
+func NewChallengeSolver(cc corev1listers.ServiceLister, nc networkingv1Client.NetworkingV1Interface, cmc certmanagerversionedclient.Interface, glc *cache.GatewayLookupCache, opts ...OptionsFunc) *ChallengeSolver {
 
 	cs := &ChallengeSolver{
 		coreClient:        cc,
@@ -176,5 +175,3 @@ func (cs *ChallengeSolver) Solve(ctx context.Context, challenge *acmev1.Challeng
 func (cs *ChallengeSolver) Hash(in string) string {
 	return fmt.Sprintf("%d", adler32.Checksum([]byte(in)))
 }
-
-

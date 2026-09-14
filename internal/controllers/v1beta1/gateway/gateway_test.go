@@ -14,10 +14,10 @@ import (
 	certmanagerv1fake "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/typed/certmanager/v1/fake"
 	"github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/cache"
 	v1beta1labels "github.com/kanopy-platform/gateway-certificate-controller/pkg/v1beta1/labels"
-	networkingv1beta1 "istio.io/api/networking/v1beta1"
-	"istio.io/client-go/pkg/apis/networking/v1beta1"
+	networkingv1 "istio.io/api/networking/v1"
+	clientnetworkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
-	networkingv1beta1fake "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1beta1/fake"
+	networkingv1fake "istio.io/client-go/pkg/clientset/versioned/typed/networking/v1/fake"
 	k8stesting "k8s.io/client-go/testing"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -47,7 +47,7 @@ type GatewayOptions struct {
 	GatewayLookupCache *cache.GatewayLookupCache
 	Annotations        map[string]string
 	Labels             map[string]string
-	Servers            []*networkingv1beta1.Server
+	Servers            []*networkingv1.Server
 }
 
 func namespacedHost(host string) string {
@@ -92,7 +92,7 @@ func WithGLC(glc *cache.GatewayLookupCache) func(*GatewayOptions) {
 	}
 }
 
-func AppendServer(server *networkingv1beta1.Server) func(*GatewayOptions) {
+func AppendServer(server *networkingv1.Server) func(*GatewayOptions) {
 	return func(gopt *GatewayOptions) {
 		gopt.Servers = append(gopt.Servers, server)
 	}
@@ -134,22 +134,22 @@ func gatewayListAction(opts ...func(*GatewayOptions)) func(k8stesting.Action) (b
 	gopts := NewGatewayOptions(opts...)
 	return func(action k8stesting.Action) (bool, runtime.Object, error) {
 
-		servers := []*networkingv1beta1.Server{
+		servers := []*networkingv1.Server{
 			{
 				Hosts: gopts.Hosts,
-				Tls: &networkingv1beta1.ServerTLSSettings{
+				Tls: &networkingv1.ServerTLSSettings{
 					CredentialName: gopts.CredentialName,
-					Mode:           networkingv1beta1.ServerTLSSettings_SIMPLE,
+					Mode:           networkingv1.ServerTLSSettings_SIMPLE,
 				},
 			},
 		}
 
 		servers = append(servers, gopts.Servers...)
 
-		return true, &v1beta1.Gateway{
+		return true, &clientnetworkingv1.Gateway{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "Gateway",
-				APIVersion: "networking.istio.io/v1beta1",
+				APIVersion: "networking.istio.io/v1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        TestGatewayName,
@@ -157,7 +157,7 @@ func gatewayListAction(opts ...func(*GatewayOptions)) func(k8stesting.Action) (b
 				Annotations: gopts.Annotations,
 				Labels:      gopts.Labels,
 			},
-			Spec: networkingv1beta1.Gateway{
+			Spec: networkingv1.Gateway{
 				Servers: servers,
 			},
 		}, nil
@@ -184,7 +184,7 @@ func NewTestHelperWithGateways(opts ...func(*GatewayOptions)) *TestHelper {
 	gopts := NewGatewayOptions(opts...)
 	helper := NewTestHelper(gopts)
 
-	helper.IstioClient.NetworkingV1beta1().(*networkingv1beta1fake.FakeNetworkingV1beta1).PrependReactor(
+	helper.IstioClient.NetworkingV1().(*networkingv1fake.FakeNetworkingV1).PrependReactor(
 		"get",
 		"gateways",
 		gatewayListAction(opts...),
@@ -225,7 +225,7 @@ func setupControllerWithSpy(cs *istiofake.Clientset, certFake *certmanagerfake.C
 	return spy
 }
 
-func (r *controllerSpy) CreateCertificate(ctx context.Context, gateway *v1beta1.Gateway, server *networkingv1beta1.Server) error {
+func (r *controllerSpy) CreateCertificate(ctx context.Context, gateway *clientnetworkingv1.Gateway, server *networkingv1.Server) error {
 	r.CreateCalled++
 	if r.Error {
 		return fmt.Errorf("mock create error")
@@ -233,7 +233,7 @@ func (r *controllerSpy) CreateCertificate(ctx context.Context, gateway *v1beta1.
 	return r.GatewayController.CreateCertificate(ctx, gateway, server)
 }
 
-func (r *controllerSpy) UpdateCertificate(ctx context.Context, cert *v1certmanager.Certificate, gateway *v1beta1.Gateway, server *networkingv1beta1.Server) error {
+func (r *controllerSpy) UpdateCertificate(ctx context.Context, cert *v1certmanager.Certificate, gateway *clientnetworkingv1.Gateway, server *networkingv1.Server) error {
 	r.UpdateCalled++
 	if r.Error {
 		return fmt.Errorf("mock update error")
@@ -364,10 +364,10 @@ func TestGatewayReconcile_CreateCertificateWithTempCertAnnotation(t *testing.T) 
 
 func TestGatewayReconcile_SkipCertificateForTLSModePassthrough(t *testing.T) {
 	t.Parallel()
-	helper := NewTestHelperWithGateways(AppendServer(&networkingv1beta1.Server{
+	helper := NewTestHelperWithGateways(AppendServer(&networkingv1.Server{
 		Hosts: []string{"pass.example.com"},
-		Tls: &networkingv1beta1.ServerTLSSettings{
-			Mode: networkingv1beta1.ServerTLSSettings_AUTO_PASSTHROUGH,
+		Tls: &networkingv1.ServerTLSSettings{
+			Mode: networkingv1.ServerTLSSettings_AUTO_PASSTHROUGH,
 		},
 	}))
 	_, err := helper.Controller.Reconcile(context.TODO(), reconcileRequest())
@@ -488,7 +488,7 @@ func TestHTTPSolverLabelIdempotency(t *testing.T) {
 			Labels: map[string]string{},
 		},
 	}
-	gw := &v1beta1.Gateway{
+	gw := &clientnetworkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{v1beta1labels.HTTPSolverAnnotation: "true"},
 		},
@@ -507,9 +507,9 @@ func TestHTTPSolverLabelIdempotency(t *testing.T) {
 func TestGatewayReconcile_MixedServers(t *testing.T) {
 	t.Parallel()
 	helper := NewTestHelperWithGateways(
-		AppendServer(&networkingv1beta1.Server{
+		AppendServer(&networkingv1.Server{
 			Hosts: []string{"http.example.com"},
-			Port: &networkingv1beta1.Port{
+			Port: &networkingv1.Port{
 				Number:   80,
 				Protocol: "HTTP",
 				Name:     "http",
@@ -596,7 +596,7 @@ func TestIngressHTTPSolverLabelIdempotency(t *testing.T) {
 	cert := &v1certmanager.Certificate{
 		ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{}},
 	}
-	gw := &v1beta1.Gateway{
+	gw := &clientnetworkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{v1beta1labels.IngressHTTPSolverAnnotation: "true"},
 		},
@@ -618,7 +618,7 @@ func TestIngressHTTPSolverLabel_EmptyLabelNoOp(t *testing.T) {
 	cert := &v1certmanager.Certificate{
 		ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{}},
 	}
-	gw := &v1beta1.Gateway{
+	gw := &clientnetworkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{v1beta1labels.IngressHTTPSolverAnnotation: "true"},
 		},
