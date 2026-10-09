@@ -139,6 +139,35 @@ func TestIngressPlugin_Solve(t *testing.T) {
 			"annotation and spec field must carry the same ingressClass value")
 	})
 
+	t.Run("configured labels are applied to the Ingress", func(t *testing.T) {
+		fc := fake.NewClientBuilder().WithScheme(ingressTestScheme()).Build()
+		labels := map[string]string{"traffic-type": "public", "team": "example"}
+		p := challengesolver.NewIngressPlugin(fc, nil, "traefik", false, challengesolver.WithIngressLabels(labels))
+
+		err := p.Solve(context.Background(), meta)
+		assert.NoError(t, err)
+
+		ingress := &networkingv1.Ingress{}
+		err = fc.Get(context.Background(), types.NamespacedName{Name: meta.Name, Namespace: meta.Namespace}, ingress)
+		assert.NoError(t, err)
+
+		assert.Equal(t, labels, ingress.Labels)
+	})
+
+	t.Run("no labels are applied by default", func(t *testing.T) {
+		fc := fake.NewClientBuilder().WithScheme(ingressTestScheme()).Build()
+		p := challengesolver.NewIngressPlugin(fc, nil, "traefik", false)
+
+		err := p.Solve(context.Background(), meta)
+		assert.NoError(t, err)
+
+		ingress := &networkingv1.Ingress{}
+		err = fc.Get(context.Background(), types.NamespacedName{Name: meta.Name, Namespace: meta.Namespace}, ingress)
+		assert.NoError(t, err)
+
+		assert.Empty(t, ingress.Labels)
+	})
+
 	t.Run("dry-run skips apply and returns no error", func(t *testing.T) {
 		fc := fake.NewClientBuilder().WithScheme(ingressTestScheme()).Build()
 		p := challengesolver.NewIngressPlugin(fc, nil, "traefik", true)

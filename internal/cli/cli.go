@@ -84,6 +84,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().String("default-issuer", "selfsigned", "The default ClusterIssuer")
 	cmd.PersistentFlags().String("http-solver-label", "use-istio-http01-solver", "The cert-manager http01 solver selector label to apply to Certificates")
 	cmd.PersistentFlags().String("ingress-class", "traefik", "IngressClassName for Ingress resources created by IngressPlugin")
+	cmd.PersistentFlags().StringToString("ingress-labels", nil, "Labels (key=value) applied to Ingress resources created by IngressPlugin, e.g. traffic-type=public for ingress controllers that filter by label")
 	cmd.PersistentFlags().String("ingress-solver-label", "use-ingress-http01-solver", "Label key applied to Certificates when the gateway uses the ingress HTTP-01 solver")
 
 	k8sFlags.AddFlags(cmd.PersistentFlags())
@@ -248,6 +249,7 @@ func (c *RootCommand) runE(cmd *cobra.Command, args []string) error {
 			glc,
 			viper.GetString("ingress-class"),
 			dryRun,
+			challengesolver.WithIngressLabels(viper.GetStringMapString("ingress-labels")),
 		)
 
 		cs := challengesolver.NewChallengeSolver(
