@@ -166,5 +166,6 @@ confirming traffic is flowing through Istio.
 |---|---|---|
 | Certificate stays `Pending` with HTTP-01 challenge | `ingress-http01` annotation not set; VirtualService created but DNS still resolves to traefik | Add the annotation per Step 3 |
 | Ingress not created after annotation | `--challenge-solver` flag not enabled on the controller | Enable the flag and restart the controller |
+| Challenge stays `pending` with `wrong status code '404'`; the challenge Ingress exists but the legacy ingress controller never serves it | The controller only loads Ingresses matching a label selector (e.g. traefik `kubernetes.labelselector = "traffic-type=public"`) and the Ingress has no labels | Set `--ingress-labels` (e.g. `--ingress-labels=traffic-type=public`) to match the ingress controller's selector |
 | `use-ingress-http01-solver` label missing from Certificate | `--ingress-solver-label` flag not matching expected value | Verify flag value with `kubectl describe pod -n <controller-ns>` |
 | Challenge solved but cert not renewed after DNS cut-over | Annotation still present; controller still creates Ingress instead of VirtualService | Remove the annotation per Step 5 |

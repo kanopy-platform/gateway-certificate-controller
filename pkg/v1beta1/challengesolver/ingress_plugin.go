@@ -22,16 +22,35 @@ type IngressPlugin struct {
 	glc           *cache.GatewayLookupCache
 	ingressClass  string
 	dryRun        bool
+	labels        map[string]string
+}
+
+// IngressPluginOption configures optional IngressPlugin behavior.
+type IngressPluginOption func(p *IngressPlugin)
+
+// WithIngressLabels sets labels applied to every Ingress created by the plugin.
+// Ingress controllers that filter by label (e.g. traefik's
+// kubernetes.labelselector) will ignore Ingresses that lack them.
+func WithIngressLabels(labels map[string]string) IngressPluginOption {
+	return func(p *IngressPlugin) {
+		p.labels = labels
+	}
 }
 
 // NewIngressPlugin constructs an IngressPlugin.
-func NewIngressPlugin(c client.Client, glc *cache.GatewayLookupCache, ingressClass string, dryRun bool) *IngressPlugin {
-	return &IngressPlugin{
+func NewIngressPlugin(c client.Client, glc *cache.GatewayLookupCache, ingressClass string, dryRun bool, opts ...IngressPluginOption) *IngressPlugin {
+	p := &IngressPlugin{
 		runtimeClient: c,
 		glc:           glc,
 		ingressClass:  ingressClass,
 		dryRun:        dryRun,
 	}
+
+	for _, opt := range opts {
+		opt(p)
+	}
+
+	return p
 }
 
 // Applicable returns true when the gateway for this hostname has the
@@ -62,6 +81,7 @@ func (p *IngressPlugin) Solve(ctx context.Context, meta ChallengeMeta) error {
 	apiVersion := acmev1.SchemeGroupVersion.String()
 
 	ingress := applyconfignetworkingv1.Ingress(meta.Name, meta.Namespace).
+		WithLabels(p.labels).
 		WithAnnotations(map[string]string{
 			// kubernetes.io/ingress.class is the legacy annotation used by
 			// ingress controllers that predate spec.ingressClassName (k8s 1.18).
